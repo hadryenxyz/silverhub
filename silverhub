@@ -1,0 +1,965 @@
+--[[
+  ╔─────────────────────────────────────╗
+  │  SILVER HUB  ·  v2.0               │
+  │  @hadryenxyz                        │
+  ╚─────────────────────────────────────╝
+  Universal Aim Trainer Assistant
+--]]
+
+-- ─────────────────────────────────────────────────────────
+--  VERSION / CHANGELOG
+-- ─────────────────────────────────────────────────────────
+
+local VERSION = "2.0"
+
+local CHANGELOG = {
+	{ ver = "STATUS", lines = {
+        "! Keybinding is currently broken !",
+		"Please use default keybinds ",
+		"Fix coming soon",
+    }},
+    { ver = "2.0", lines = {
+        "+ Complete UI rewrite",
+        "+ Tab system: Aim / Settings / Info",
+        "+ Wall check ",
+        "+ Auto-updater via launcher",
+        "+ Changelogs panel",
+        "+ Hub settings tab",
+        "+ Slide-in animations",
+        "~ Improved target acquisition",
+        "~ Prediction tuning",
+    }},
+    { ver = "1.0", lines = {
+        "+ Initial release",
+        "+ Game auto-detection (6 games)",
+        "+ Aimbot + Triggerbot",
+        "+ Prediction for Da Track",
+        "+ Animation override",
+        "+ FOV circle",
+    }},
+}
+
+-- ─────────────────────────────────────────────────────────
+--  SERVICES
+-- ─────────────────────────────────────────────────────────
+
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+
+local player  = Players.LocalPlayer
+local camera  = workspace.CurrentCamera
+local PlaceId = game.PlaceId
+
+-- ─────────────────────────────────────────────────────────
+--  GAME REGISTRY
+-- ─────────────────────────────────────────────────────────
+
+local REGISTRY = {
+    [9800976141] = {
+        name       = "Pandi's Aim Trainer",
+        accent     = Color3.fromRGB(80, 200, 255),
+        prediction = false, animations = false, requireTool = false,
+        targetType = "pandi",
+    },
+    [6159892946] = {
+        name       = "Aim Trainer by Avallachi",
+        accent     = Color3.fromRGB(255, 160, 80),
+        prediction = false, animations = false, requireTool = false,
+        targetType = "workspaceTargetsParts",
+    },
+    [75159825516372] = {
+        name       = "Da Track",
+        accent     = Color3.fromRGB(160, 110, 255),
+        prediction = true, animations = true, requireTool = true,
+        targetType = "bots",
+    },
+    [99339014518999] = {
+        name       = "Da Track Legacy",
+        accent     = Color3.fromRGB(130, 85, 230),
+        prediction = true, animations = true, requireTool = true,
+        targetType = "bots",
+    },
+    [5880351207] = {
+        name       = "Reflex Aim Trainer",
+        accent     = Color3.fromRGB(80, 255, 160),
+        prediction = false, animations = false, requireTool = false,
+        targetType = "workspaceTargetsParts",
+    },
+    [72440205375181] = {
+        name       = "Da Hood Bot Aim Trainer",
+        accent     = Color3.fromRGB(255, 210, 60),
+        prediction = true, animations = true, requireTool = true,
+        targetType = "daHoodBots",
+    },
+}
+
+local cfg    = REGISTRY[PlaceId]
+local ACCENT = cfg and cfg.accent or Color3.fromRGB(200, 200, 220)
+
+-- ─────────────────────────────────────────────────────────
+--  SETTINGS  (persisted in session via _G)
+-- ─────────────────────────────────────────────────────────
+
+_G.SVLR_Settings = {
+    Enabled        = false,
+    AimbotStrength = 0.08223,
+    FOV            = 20,
+    ShowFOVCircle  = false,
+    RequireTool    = false,
+    WallCheck      = true,
+    UsePrediction  = true,
+    PredOffset     = 4.5,
+    BulletSpeed    = 220,
+    TrigEnabled    = false,
+    TrigFOV        = 5,
+    AnimsEnabled   = false,
+    KB_GUI         = Enum.KeyCode.Insert,
+    KB_AIM         = Enum.KeyCode.Q,
+}
+
+
+local S = _G.SVLR_Settings
+
+-- ─────────────────────────────────────────────────────────
+--  ANIMATIONS OVERRIDE
+-- ─────────────────────────────────────────────────────────
+
+local AnimIDs = {
+    idle1 = "rbxassetid://122257458498464",
+    idle2 = "rbxassetid://102357151005774",
+    walk  = "rbxassetid://616168032",
+    run   = "rbxassetid://616163682",
+    climb = "rbxassetid://1083439238",
+    jump  = "rbxassetid://10921242013",
+    fall  = "rbxassetid://707829716",
+}
+
+local animThread
+
+local function stopAnimLoop()
+    if animThread then task.cancel(animThread) end
+    animThread = nil
+end
+
+local function startAnimLoop(character)
+    stopAnimLoop()
+    animThread = task.spawn(function()
+        while S.AnimsEnabled do
+            pcall(function()
+                local A = character:WaitForChild("Animate", 3)
+                if not A then return end
+                local function ms(track, id)
+                    if track and track.AnimationId ~= id then track.AnimationId = id end
+                end
+                ms(A.idle:FindFirstChild("Animation1"),  AnimIDs.idle1)
+                ms(A.idle:FindFirstChild("Animation2"),  AnimIDs.idle2)
+                ms(A.jump:FindFirstChild("jump"),        AnimIDs.jump)
+                ms(A.walk:FindFirstChild("WalkAnim"),    AnimIDs.walk)
+                ms(A.run:FindFirstChild("RunAnim"),      AnimIDs.run)
+                ms(A.climb:FindFirstChild("ClimbAnim"),  AnimIDs.climb)
+                ms(A.fall:FindFirstChild("FallAnim"),    AnimIDs.fall)
+            end)
+            task.wait(0.8)
+        end
+    end)
+end
+
+if cfg and cfg.animations then
+    player.CharacterAdded:Connect(function(char)
+        if S.AnimsEnabled then task.delay(0.5, function() startAnimLoop(char) end) end
+    end)
+end
+
+-- ─────────────────────────────────────────────────────────
+--  UTILS
+-- ─────────────────────────────────────────────────────────
+
+local function isToolEquipped()
+    local char = player.Character
+    return char and char:FindFirstChildOfClass("Tool") ~= nil
+end
+
+local function getAimPart(obj)
+    if obj:IsA("BasePart") then return obj end
+    if obj.PrimaryPart     then return obj.PrimaryPart end
+    local hrp = obj:FindFirstChild("HumanoidRootPart")
+    if hrp then return hrp end
+    return obj:FindFirstChildWhichIsA("BasePart")
+end
+
+-- Wall check: raycast from camera toward target, returns true if clear
+local WALL_PARAMS = RaycastParams.new()
+WALL_PARAMS.FilterType = Enum.RaycastFilterType.Exclude
+
+local function isVisible(target)
+    if not S.WallCheck then return true end
+    local part = getAimPart(target)
+    if not part then return true end
+
+    -- Exclude localplayer character from raycast
+    local char = player.Character
+    local ignore = char and {char} or {}
+    -- Also try to exclude the target itself so ray hits something behind it
+    table.insert(ignore, target:IsA("Model") and target or target.Parent)
+    WALL_PARAMS.FilterDescendantsInstances = ignore
+
+    local origin = camera.CFrame.Position
+    local dir    = (part.Position - origin)
+    local result = workspace:Raycast(origin, dir, WALL_PARAMS)
+
+    if not result then return true end
+    -- Check if what we hit belongs to the target
+    local hit = result.Instance
+    if hit:IsDescendantOf(target) or hit == target then return true end
+    -- Check if what we hit is part of any bot/target (for model targets)
+    if target:IsA("Model") and hit:IsDescendantOf(target) then return true end
+    return false
+end
+
+-- ─────────────────────────────────────────────────────────
+--  TARGET ACQUISITION
+-- ─────────────────────────────────────────────────────────
+
+local _daHoodContainer
+local currentTarget = nil
+
+local function getTargetList()
+    if not cfg then return {} end
+    local list = {}
+    local tt = cfg.targetType
+
+    if tt == "pandi" then
+        local maps = workspace:FindFirstChild("Maps")
+        if not maps then return list end
+        for _, mapChild in ipairs(maps:GetChildren()) do
+            local tf = mapChild:FindFirstChild("Targets")
+            if not tf then continue end
+            for _, obj in ipairs(tf:GetDescendants()) do
+                if obj:IsA("Model") and getAimPart(obj) then table.insert(list, obj) end
+            end
+        end
+
+    elseif tt == "workspaceTargetsParts" then
+        local tf = workspace:FindFirstChild("Targets")
+        if not tf then return list end
+        for _, obj in ipairs(tf:GetChildren()) do
+            if obj:IsA("BasePart") then table.insert(list, obj) end
+        end
+
+    elseif tt == "bots" then
+        local folder = workspace:FindFirstChild("Bots")
+        if not folder then return list end
+        for _, bot in ipairs(folder:GetChildren()) do
+            local hrp = bot:FindFirstChild("HumanoidRootPart")
+            local hum = bot:FindFirstChildOfClass("Humanoid")
+            if hrp and hum and hum.Health > 0 then table.insert(list, bot) end
+        end
+
+    elseif tt == "daHoodBots" then
+        for _, child in ipairs(workspace:GetChildren()) do
+            if child.Name == "DaTNTShow52" then
+                local hrp = child:FindFirstChild("HumanoidRootPart")
+                local hum = child:FindFirstChildOfClass("Humanoid")
+                if hrp and hum and hum.Health > 0 then table.insert(list, child) end
+            end
+        end
+        if #list == 0 then
+            if not _daHoodContainer or not _daHoodContainer.Parent then
+                _daHoodContainer = nil
+                for _, child in ipairs(workspace:GetChildren()) do
+                    if not child:IsA("Terrain") and not child:IsA("Camera") then
+                        local first = child:GetChildren()[1]
+                        if first and first:FindFirstChild("HumanoidRootPart") then
+                            _daHoodContainer = child; break
+                        end
+                    end
+                end
+                if not _daHoodContainer then
+                    _daHoodContainer = workspace:GetChildren()[9]
+                end
+            end
+            if _daHoodContainer then
+                for _, bot in ipairs(_daHoodContainer:GetChildren()) do
+                    local hrp = bot:FindFirstChild("HumanoidRootPart")
+                    local hum = bot:FindFirstChildOfClass("Humanoid")
+                    if hrp and hum and hum.Health > 0 then table.insert(list, bot) end
+                end
+            end
+        end
+    end
+    return list
+end
+
+local function getBestTarget()
+    local best, bestAngle = nil, math.huge
+    for _, obj in ipairs(getTargetList()) do
+        local part = getAimPart(obj)
+        if not part then continue end
+        local dir   = part.Position - camera.CFrame.Position
+        local dot   = math.clamp(camera.CFrame.LookVector:Dot(dir.Unit), -1, 1)
+        local angle = math.deg(math.acos(dot))
+        if angle < S.FOV and angle < bestAngle then
+            if isVisible(obj) then
+                bestAngle = angle; best = obj
+            end
+        end
+    end
+    return best
+end
+
+-- ─────────────────────────────────────────────────────────
+--  AIM POSITION
+-- ─────────────────────────────────────────────────────────
+
+local function getAimPosition(target)
+    local part = getAimPart(target)
+    if not part then return nil end
+    local basePos = part.Position
+    if not cfg or not cfg.prediction or not S.UsePrediction then return basePos end
+    local vel        = part.AssemblyLinearVelocity
+    local dist       = (basePos - camera.CFrame.Position).Magnitude
+    local travelTime = dist / math.max(S.BulletSpeed, 1)
+    local scaledVel  = Vector3.new(vel.X, vel.Y * 0.1, vel.Z)
+    local predicted  = basePos + scaledVel * travelTime
+    local horizVel   = Vector3.new(vel.X, 0, vel.Z)
+    if horizVel.Magnitude > 0.5 and S.PredOffset > 0 then
+        predicted = predicted + horizVel.Unit * S.PredOffset
+    end
+    return predicted
+end
+
+-- ─────────────────────────────────────────────────────────
+--  TRIGGERBOT
+-- ─────────────────────────────────────────────────────────
+
+local function fireShot()
+    task.spawn(function()
+        pcall(function() mouse1press(); task.wait(0.06); mouse1release() end)
+    end)
+end
+
+local trigCooldown = false
+
+local function tryTriggerbot(target)
+    if not S.TrigEnabled or trigCooldown or not target then return end
+    if S.RequireTool and not isToolEquipped() then return end
+    local part = getAimPart(target)
+    if not part then return end
+    local dot   = math.clamp(camera.CFrame.LookVector:Dot(
+        (part.Position - camera.CFrame.Position).Unit), -1, 1)
+    if math.deg(math.acos(dot)) < S.TrigFOV then
+        trigCooldown = true
+        task.delay(0.04, function()
+            fireShot()
+            task.delay(0.18, function() trigCooldown = false end)
+        end)
+    end
+end
+
+-- ─────────────────────────────────────────────────────────
+--  FOV CIRCLE
+-- ─────────────────────────────────────────────────────────
+
+local fovCircle
+
+local function ensureFOVCircle()
+    if fovCircle then return end
+    fovCircle = Drawing.new("Circle")
+    fovCircle.Thickness = 1; fovCircle.Filled = false; fovCircle.NumSides = 64
+    fovCircle.Transparency = 0.6
+end
+
+local function updateFOVCircle()
+    ensureFOVCircle()
+    if not S.ShowFOVCircle then fovCircle.Visible = false return end
+    local vp   = camera.ViewportSize
+    local rad  = (math.tan(math.rad(S.FOV)) /
+                  math.tan(math.rad(camera.FieldOfView * 0.5))) * (vp.Y * 0.5)
+    fovCircle.Position     = Vector2.new(vp.X * 0.5, vp.Y * 0.5)
+    fovCircle.Radius       = rad; fovCircle.Visible = true
+    fovCircle.Color        = currentTarget and Color3.fromRGB(100,245,120) or Color3.fromRGB(200,200,220)
+    fovCircle.Transparency = currentTarget and 0.25 or 0.6
+end
+
+-- ─────────────────────────────────────────────────────────
+--  VAPE THEME CONSTANTS
+-- ─────────────────────────────────────────────────────────
+
+--  Vape-inspired: near-black, sharp corners, mono font, flat look
+local T = {
+    bg      = Color3.fromRGB(12,  12,  15),
+    bg2     = Color3.fromRGB(20,  20,  25),
+    bg3     = Color3.fromRGB(28,  28,  36),
+    border  = Color3.fromRGB(38,  38,  52),
+    text    = Color3.fromRGB(235, 235, 245),
+    textDim = Color3.fromRGB(110, 110, 130),
+    on      = Color3.fromRGB(100, 245, 120),
+    off     = Color3.fromRGB(235,  75,  75),
+    accent  = ACCENT,
+}
+
+-- ─────────────────────────────────────────────────────────
+--  UI
+-- ─────────────────────────────────────────────────────────
+
+local mainGui
+local targetLabelRef
+local activeTab     = "AIM"
+local tabFrames     = {}
+local tabButtons    = {}
+
+local function sf(f, r)   -- style frame
+    f.BackgroundColor3 = T.bg; f.BorderSizePixel = 0
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, r or 4); c.Parent = f
+    local s = Instance.new("UIStroke"); s.Thickness = 1; s.Color = T.border
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = f
+end
+
+local function sb(b)  -- style text button
+    b.BackgroundColor3 = T.bg2; b.AutoButtonColor = false; b.BorderSizePixel = 0
+    b.Font = Enum.Font.GothamBlack; b.TextSize = 12; b.TextColor3 = T.text
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,4); c.Parent = b
+    local s = Instance.new("UIStroke"); s.Thickness = 1; s.Color = T.border
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = b
+    b.MouseEnter:Connect(function()
+        TweenService:Create(b,TweenInfo.new(0.08),{BackgroundColor3=T.bg3}):Play()
+    end)
+    b.MouseLeave:Connect(function()
+        TweenService:Create(b,TweenInfo.new(0.08),{BackgroundColor3=T.bg2}):Play()
+    end)
+end
+
+local function createUI()
+    -- Destroy old if re-executing
+    local old = player:FindFirstChild("PlayerGui") and
+                player.PlayerGui:FindFirstChild("SilverHubV2")
+    if old then old:Destroy() end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "SilverHubV2"; gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true; gui.Parent = player:WaitForChild("PlayerGui")
+    mainGui = gui
+
+    local W, H = 260, 400
+
+    -- Main window
+    local win = Instance.new("Frame")
+    win.Name = "Window"; win.Size = UDim2.new(0,W,0,H)
+    win.Position = UDim2.new(0,24,0,160)
+    win.Active = true; win.Draggable = true; win.Parent = gui
+    sf(win, 4)
+
+    -- Slide in from left on open
+    win.Position = UDim2.new(0,-W-10,0,160)
+    TweenService:Create(win,
+        TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+        {Position = UDim2.new(0,24,0,160)}):Play()
+
+    -- ── TOP BAR ──────────────────────────────────────────
+
+    local topBar = Instance.new("Frame")
+    topBar.Size = UDim2.new(1,0,0,38); topBar.BackgroundColor3 = T.bg2
+    topBar.BorderSizePixel = 0; topBar.Parent = win
+    Instance.new("UICorner",topBar).CornerRadius = UDim.new(0,4)
+
+    -- Accent left strip
+    local strip = Instance.new("Frame")
+    strip.Size = UDim2.new(0,3,1,0); strip.BackgroundColor3 = T.accent
+    strip.BorderSizePixel = 0; strip.Parent = topBar
+    Instance.new("UICorner",strip).CornerRadius = UDim.new(0,4)
+
+    local logoTxt = Instance.new("TextLabel")
+    logoTxt.Size = UDim2.new(0,120,1,0); logoTxt.Position = UDim2.new(0,12,0,0)
+    logoTxt.BackgroundTransparency = 1; logoTxt.Text = "SILVER HUB"
+    logoTxt.Font = Enum.Font.GothamBold; logoTxt.TextSize = 15
+    logoTxt.TextColor3 = T.text
+    logoTxt.TextXAlignment = Enum.TextXAlignment.Left; logoTxt.Parent = topBar
+
+    local verTxt = Instance.new("TextLabel")
+    verTxt.Size = UDim2.new(0,50,1,0); verTxt.Position = UDim2.new(1,-54,0,0)
+    verTxt.BackgroundTransparency = 1; verTxt.Text = "v" .. VERSION
+    verTxt.Font = Enum.Font.GothamBlack; verTxt.TextSize = 9
+    verTxt.TextColor3 = T.textDim
+    verTxt.TextXAlignment = Enum.TextXAlignment.Right; verTxt.Parent = topBar
+
+    -- Game name
+    local gameTxt = Instance.new("TextLabel")
+    gameTxt.Size = UDim2.new(1,-10,0,14); gameTxt.Position = UDim2.new(0,12,1,-17)
+    gameTxt.BackgroundTransparency = 1
+    gameTxt.Text = cfg and cfg.name or ("Unknown  ·  " .. tostring(PlaceId))
+    gameTxt.Font = Enum.Font.GothamBlack; gameTxt.TextSize = 9
+    gameTxt.TextColor3 = cfg and T.accent or Color3.fromRGB(200,160,60)
+    gameTxt.TextXAlignment = Enum.TextXAlignment.Left; gameTxt.Parent = topBar
+
+    -- ── TAB BAR ──────────────────────────────────────────
+
+    local tabBar = Instance.new("Frame")
+    tabBar.Size = UDim2.new(1,0,0,26); tabBar.Position = UDim2.new(0,0,0,38)
+    tabBar.BackgroundColor3 = T.bg; tabBar.BorderSizePixel = 0; tabBar.Parent = win
+
+    local tabDiv = Instance.new("Frame")
+    tabDiv.Size = UDim2.new(1,0,0,1); tabDiv.Position = UDim2.new(0,0,1,-1)
+    tabDiv.BackgroundColor3 = T.border; tabDiv.BorderSizePixel = 0; tabDiv.Parent = tabBar
+
+    local TABS = { "AIM", "SETTINGS", "INFO" }
+    local tabW  = W / #TABS
+
+    -- Target label just below tab bar
+    local targetLabel = Instance.new("TextLabel")
+    targetLabel.Size = UDim2.new(1,-10,0,12); targetLabel.Position = UDim2.new(0,6,0,68)
+    targetLabel.BackgroundTransparency = 1; targetLabel.Text = "no target"
+    targetLabel.Font = Enum.Font.GothamBlack; targetLabel.TextSize = 9
+    targetLabel.TextColor3 = T.textDim
+    targetLabel.TextXAlignment = Enum.TextXAlignment.Left; targetLabel.Parent = win
+    targetLabelRef = targetLabel
+
+    -- ── TAB CONTENT AREA ─────────────────────────────────
+
+    local contentY = 83  -- below topbar + tabbar + target label
+
+    for _, tabName in ipairs(TABS) do
+        -- Tab button
+        local idx = table.find(TABS, tabName)
+        local tbtn = Instance.new("TextButton")
+        tbtn.Size  = UDim2.new(0, tabW, 1, 0)
+        tbtn.Position = UDim2.new(0, (idx-1)*tabW, 0, 0)
+        tbtn.BackgroundTransparency = 1
+        tbtn.Text = tabName; tbtn.Font = Enum.Font.GothamBold; tbtn.TextSize = 10
+        tbtn.TextColor3 = tabName == "AIM" and T.accent or T.textDim
+        tbtn.BorderSizePixel = 0; tbtn.Parent = tabBar
+        tabButtons[tabName] = tbtn
+
+        -- Active indicator line
+        local indicator = Instance.new("Frame")
+        indicator.Size = UDim2.new(0.7,0,0,2); indicator.Position = UDim2.new(0.15,0,1,-2)
+        indicator.BackgroundColor3 = T.accent; indicator.BorderSizePixel = 0
+        indicator.Visible = (tabName == "AIM"); indicator.Parent = tbtn
+        Instance.new("UICorner",indicator).CornerRadius = UDim.new(0,2)
+        tbtn:SetAttribute("Indicator", true)
+
+        -- Tab scroll frame
+        local sf2 = Instance.new("ScrollingFrame")
+        sf2.Name = "Tab_" .. tabName
+        sf2.Size = UDim2.new(1,-8,1,-contentY-10)
+        sf2.Position = UDim2.new(0,4,0,contentY)
+        sf2.CanvasSize = UDim2.new(0,0,0,0); sf2.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        sf2.ScrollBarThickness = 2; sf2.ScrollBarImageColor3 = Color3.fromRGB(45,45,65)
+        sf2.BackgroundTransparency = 1; sf2.BorderSizePixel = 0
+        sf2.Visible = (tabName == "AIM"); sf2.Parent = win
+        tabFrames[tabName] = sf2
+
+        local ll = Instance.new("UIListLayout")
+        ll.Padding = UDim.new(0,4); ll.FillDirection = Enum.FillDirection.Vertical
+        ll.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        ll.SortOrder = Enum.SortOrder.LayoutOrder; ll.Parent = sf2
+        local pp = Instance.new("UIPadding")
+        pp.PaddingLeft = UDim.new(0,2); pp.PaddingRight  = UDim.new(0,2)
+        pp.PaddingTop  = UDim.new(0,3); pp.PaddingBottom = UDim.new(0,6); pp.Parent = sf2
+
+        -- Tab switch logic
+        tbtn.MouseButton1Click:Connect(function()
+            if activeTab == tabName then return end
+            -- Animate out old tab
+            local old = tabFrames[activeTab]
+            old.Visible = false
+            task.delay(0.1, function() if old then old.Visible = false end end)
+            -- Update button styles
+            for _, t2 in ipairs(TABS) do
+                local b2 = tabButtons[t2]
+                b2.TextColor3 = T.textDim
+                local ind = b2:FindFirstChildOfClass("Frame")
+                if ind then ind.Visible = false end
+            end
+            -- Animate in new tab
+            activeTab = tabName
+            sf2.Visible = true
+            tbtn.TextColor3 = T.accent
+            local ind2 = tbtn:FindFirstChildOfClass("Frame")
+            if ind2 then ind2.Visible = true end
+        end)
+    end
+
+    -- ─────────────────────────────────────────────────────
+    --  HELPERS  (scoped to a parent scroll frame)
+    -- ─────────────────────────────────────────────────────
+
+    local function mkSec(scroll, text)
+        local row = Instance.new("Frame"); row.Size = UDim2.new(1,0,0,18)
+        row.BackgroundTransparency = 1; row.Parent = scroll
+        local line = Instance.new("Frame"); line.Size = UDim2.new(1,0,0,1)
+        line.Position = UDim2.new(0,0,0.5,0)
+        line.BackgroundColor3 = T.border; line.BorderSizePixel = 0; line.Parent = row
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0,0,1,0); lbl.AutomaticSize = Enum.AutomaticSize.X
+        lbl.Position = UDim2.new(0,4,0,0)
+        lbl.BackgroundColor3 = T.bg; lbl.BackgroundTransparency = 0
+        lbl.Text = " " .. text .. " "
+        lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 9
+        lbl.TextColor3 = T.textDim
+        lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Parent = row
+    end
+
+    local function mkHint(scroll, text)
+        local l = Instance.new("TextLabel"); l.Size = UDim2.new(1,0,0,11)
+        l.BackgroundTransparency = 1; l.Text = "  " .. text
+        l.Font = Enum.Font.GothamBlack; l.TextSize = 9
+        l.TextColor3 = T.textDim
+        l.TextXAlignment = Enum.TextXAlignment.Left; l.Parent = scroll
+    end
+
+    local function mkToggle(scroll, labelOff, labelOn, colOff, colOn, initial, cb)
+        local b = Instance.new("TextButton")
+        b.Size = UDim2.new(1,0,0,24); b.Parent = scroll
+        b.Text = initial and labelOn or labelOff
+        b.TextColor3 = initial and colOn or colOff
+        sb(b)
+        b.MouseButton1Click:Connect(function()
+            local ns = cb()
+            -- Animate color
+            TweenService:Create(b, TweenInfo.new(0.12),
+                {TextColor3 = ns and colOn or colOff}):Play()
+            b.Text = ns and labelOn or labelOff
+        end)
+        return b
+    end
+
+    local function mkRow(scroll, label, default, onSubmit)
+        local row = Instance.new("Frame"); row.Size = UDim2.new(1,0,0,24)
+        row.BackgroundColor3 = T.bg2; row.BorderSizePixel = 0; row.Parent = scroll
+        Instance.new("UICorner",row).CornerRadius = UDim.new(0,4)
+        local s2 = Instance.new("UIStroke"); s2.Thickness = 1; s2.Color = T.border
+        s2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s2.Parent = row
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1,-72,1,0); lbl.Position = UDim2.new(0,7,0,0)
+        lbl.BackgroundTransparency = 1; lbl.Text = label
+        lbl.Font = Enum.Font.GothamBlack; lbl.TextSize = 11
+        lbl.TextColor3 = T.textDim
+        lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Parent = row
+        local box = Instance.new("TextBox")
+        box.Size = UDim2.new(0,58,0,18); box.Position = UDim2.new(1,-62,0.5,-9)
+        box.BackgroundColor3 = T.bg; box.Text = tostring(default)
+        box.Font = Enum.Font.GothamBlack; box.TextSize = 11
+        box.TextColor3 = T.text; box.ClearTextOnFocus = false; box.Parent = row
+        Instance.new("UICorner",box).CornerRadius = UDim.new(0,4)
+        box.FocusLost:Connect(function(enter)
+            if not enter then return end
+            local v = tonumber(box.Text)
+            if v then box.Text = tostring(onSubmit(v) or v)
+            else      box.Text = tostring(default) end
+        end)
+    end
+
+    -- ═════════════════════════════════════════════════════
+    --  TAB: AIM
+    -- ═════════════════════════════════════════════════════
+
+    local aimTab = tabFrames["AIM"]
+
+    -- Master on/off (bigger, accent border when ON)
+    local masterBtn = Instance.new("TextButton")
+    masterBtn.Size = UDim2.new(1,0,0,30); masterBtn.Parent = aimTab
+    masterBtn.Text = "AIMBOT  OFF"; masterBtn.TextColor3 = T.off
+    masterBtn.Font = Enum.Font.GothamBold; masterBtn.TextSize = 13
+    masterBtn.BackgroundColor3 = T.bg2; masterBtn.AutoButtonColor = false
+    masterBtn.BorderSizePixel = 0
+    Instance.new("UICorner",masterBtn).CornerRadius = UDim.new(0,4)
+    local mStroke = Instance.new("UIStroke"); mStroke.Thickness = 1.5
+    mStroke.Color = T.border; mStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    mStroke.Parent = masterBtn
+    masterBtn.MouseButton1Click:Connect(function()
+        S.Enabled = not S.Enabled
+        masterBtn.Text = S.Enabled and "AIMBOT  ON" or "AIMBOT  OFF"
+        TweenService:Create(masterBtn, TweenInfo.new(0.15),
+            {TextColor3 = S.Enabled and T.on or T.off}):Play()
+        TweenService:Create(mStroke, TweenInfo.new(0.15),
+            {Color = S.Enabled and T.on or T.border}):Play()
+    end)
+    masterBtn.MouseEnter:Connect(function()
+        TweenService:Create(masterBtn,TweenInfo.new(0.08),{BackgroundColor3=T.bg3}):Play()
+    end)
+    masterBtn.MouseLeave:Connect(function()
+        TweenService:Create(masterBtn,TweenInfo.new(0.08),{BackgroundColor3=T.bg2}):Play()
+    end)
+
+    mkSec(aimTab, "AIMBOT")
+    mkRow(aimTab, "Strength", S.AimbotStrength, function(v)
+        S.AimbotStrength = math.clamp(v,0,1); return S.AimbotStrength
+    end)
+    mkRow(aimTab, "FOV  (deg)", S.FOV, function(v)
+        S.FOV = math.clamp(v,1,180); return S.FOV
+    end)
+
+    mkToggle(aimTab, "Wall Check  OFF","Wall Check  ON",
+        T.off, T.on, S.WallCheck, function()
+        S.WallCheck = not S.WallCheck; return S.WallCheck
+    end)
+
+    mkToggle(aimTab, "FOV Circle  OFF","FOV Circle  ON",
+        T.off, T.on, S.ShowFOVCircle, function()
+        S.ShowFOVCircle = not S.ShowFOVCircle
+        if not S.ShowFOVCircle and fovCircle then fovCircle.Visible = false end
+        return S.ShowFOVCircle
+    end)
+
+    mkSec(aimTab, "TRIGGERBOT")
+    mkToggle(aimTab, "Triggerbot  OFF","Triggerbot  ON",
+        T.off, T.on, S.TrigEnabled, function()
+        S.TrigEnabled = not S.TrigEnabled; return S.TrigEnabled
+    end)
+    mkRow(aimTab, "Trig FOV  (deg)", S.TrigFOV, function(v)
+        S.TrigFOV = math.clamp(v,0.5,15); return S.TrigFOV
+    end)
+
+    if cfg and cfg.requireTool then
+        mkSec(aimTab, "TOOL CHECK")
+        mkToggle(aimTab, "Require Tool  OFF","Require Tool  ON",
+            T.off, T.on, S.RequireTool, function()
+            S.RequireTool = not S.RequireTool; return S.RequireTool
+        end)
+    end
+
+    if cfg and cfg.prediction then
+        mkSec(aimTab, "PREDICTION")
+        mkToggle(aimTab, "Prediction  OFF","Prediction  ON",
+            T.off, T.on, S.UsePrediction, function()
+            S.UsePrediction = not S.UsePrediction; return S.UsePrediction
+        end)
+        mkRow(aimTab, "Offset  (studs)", S.PredOffset, function(v)
+            S.PredOffset = math.clamp(v,0,15); return S.PredOffset
+        end)
+        mkHint(aimTab, "start at 4.5, adjust ±1")
+    end
+
+    if cfg and cfg.animations then
+        mkSec(aimTab, "ANIMATIONS")
+        mkToggle(aimTab, "Tryhard Anims  OFF","Tryhard Anims  ON",
+            T.off, T.on, S.AnimsEnabled, function()
+            S.AnimsEnabled = not S.AnimsEnabled
+            if S.AnimsEnabled then
+                local char = player.Character
+                if char then startAnimLoop(char) end
+            else
+                stopAnimLoop()
+            end
+            return S.AnimsEnabled
+        end)
+    end
+
+    -- ═════════════════════════════════════════════════════
+    --  TAB: SETTINGS
+    -- ═════════════════════════════════════════════════════
+
+    local setTab = tabFrames["SETTINGS"]
+
+    mkSec(setTab, "KEYBINDS")
+
+	local listeningFor = nil  -- "AIM" | "GUI" | nil
+
+	local function mkKeybindRow(scroll, label, settingKey)
+		local row = Instance.new("Frame"); row.Size = UDim2.new(1,0,0,24)
+		row.BackgroundColor3 = T.bg2; row.BorderSizePixel = 0; row.Parent = scroll
+		Instance.new("UICorner",row).CornerRadius = UDim.new(0,4)
+		local s2 = Instance.new("UIStroke"); s2.Thickness = 1; s2.Color = T.border
+		s2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s2.Parent = row
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.new(1,-80,1,0); lbl.Position = UDim2.new(0,7,0,0)
+		lbl.BackgroundTransparency = 1; lbl.Text = label
+		lbl.Font = Enum.Font.GothamBlack; lbl.TextSize = 11
+		lbl.TextColor3 = T.textDim
+		lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Parent = row
+
+		local keyBtn = Instance.new("TextButton")
+		keyBtn.Size = UDim2.new(0,70,0,16); keyBtn.Position = UDim2.new(1,-74,0.5,-8)
+		keyBtn.BackgroundColor3 = T.bg; keyBtn.AutoButtonColor = false
+		keyBtn.Text = tostring(S[settingKey]):gsub("Enum.KeyCode.","")
+		keyBtn.Font = Enum.Font.GothamBold; keyBtn.TextSize = 10
+		keyBtn.TextColor3 = T.accent; keyBtn.BorderSizePixel = 0
+		keyBtn.TextXAlignment = Enum.TextXAlignment.Center; keyBtn.Parent = row
+		Instance.new("UICorner",keyBtn).CornerRadius = UDim.new(0,4)
+		local ks = Instance.new("UIStroke"); ks.Thickness = 1; ks.Color = T.border
+		ks.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; ks.Parent = keyBtn
+
+		keyBtn.MouseButton1Click:Connect(function()
+			listeningFor = settingKey
+			keyBtn.Text = "..."
+			keyBtn.TextColor3 = Color3.fromRGB(255, 200, 60)
+			TweenService:Create(ks, TweenInfo.new(0.1), {Color = Color3.fromRGB(255,200,60)}):Play()
+		end)
+
+		-- Store ref so we can update text after rebind
+		keyBtn:SetAttribute("SettingKey", settingKey)
+		row:SetAttribute("IsKeybindRow", true)
+
+		return row, keyBtn
+	end
+
+	-- Replace the two mkKeybindRow calls:
+	local _, aimKeyBtn  = mkKeybindRow(setTab, "Toggle Aimbot", "KB_AIM")
+	local _, guiKeyBtn  = mkKeybindRow(setTab, "Hide / Show UI", "KB_GUI")
+
+    mkSec(setTab, "SESSION")
+
+    local function mkInfoRow(scroll, label, value)
+        local row = Instance.new("Frame"); row.Size = UDim2.new(1,0,0,22)
+        row.BackgroundColor3 = T.bg2; row.BorderSizePixel = 0; row.Parent = scroll
+        Instance.new("UICorner",row).CornerRadius = UDim.new(0,4)
+        local s2 = Instance.new("UIStroke"); s2.Thickness = 1; s2.Color = T.border
+        s2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s2.Parent = row
+        local l1 = Instance.new("TextLabel")
+        l1.Size = UDim2.new(0.5,0,1,0); l1.Position = UDim2.new(0,7,0,0)
+        l1.BackgroundTransparency = 1; l1.Text = label
+        l1.Font = Enum.Font.GothamBlack; l1.TextSize = 10
+        l1.TextColor3 = T.textDim; l1.TextXAlignment = Enum.TextXAlignment.Left; l1.Parent = row
+        local l2 = Instance.new("TextLabel")
+        l2.Size = UDim2.new(0.5,-8,1,0); l2.Position = UDim2.new(0.5,0,0,0)
+        l2.BackgroundTransparency = 1; l2.Text = tostring(value)
+        l2.Font = Enum.Font.GothamBlack; l2.TextSize = 10
+        l2.TextColor3 = T.text; l2.TextXAlignment = Enum.TextXAlignment.Right; l2.Parent = row
+    end
+
+    mkInfoRow(setTab, "Version",   "v" .. VERSION)
+    mkInfoRow(setTab, "Place ID",  tostring(PlaceId))
+    mkInfoRow(setTab, "Game",      cfg and cfg.name or "Unknown")
+    mkInfoRow(setTab, "Scripter",  "@hadryenxyz")
+
+    mkSec(setTab, "SUPPORTED GAMES")
+    local gamesText = Instance.new("TextLabel")
+    gamesText.Size = UDim2.new(1,0,0,0); gamesText.AutomaticSize = Enum.AutomaticSize.Y
+    gamesText.BackgroundTransparency = 1; gamesText.TextWrapped = true
+    gamesText.Font = Enum.Font.GothamBlack; gamesText.TextSize = 9
+    gamesText.TextColor3 = T.textDim; gamesText.TextXAlignment = Enum.TextXAlignment.Left
+    gamesText.Text =
+        "Pandi's Aim Trainer\n" ..
+        "Aim Trainer by Avallachi\n" ..
+        "Reflex Aim Trainer\n" ..
+        "Da Track\n" ..
+        "Da Track Legacy\n" ..
+        "Da Hood Bot Aim Trainer"
+    gamesText.Parent = setTab
+
+    -- ═════════════════════════════════════════════════════
+    --  TAB: INFO  (Changelogs)
+    -- ═════════════════════════════════════════════════════
+
+    local infoTab = tabFrames["INFO"]
+
+    mkSec(infoTab, "CHANGELOG")
+
+    for _, entry in ipairs(CHANGELOG) do
+        -- Version header
+        local vRow = Instance.new("Frame"); vRow.Size = UDim2.new(1,0,0,20)
+        vRow.BackgroundColor3 = T.bg3; vRow.BorderSizePixel = 0; vRow.Parent = infoTab
+        Instance.new("UICorner",vRow).CornerRadius = UDim.new(0,4)
+        local s3 = Instance.new("UIStroke"); s3.Thickness = 1; s3.Color = T.accent
+        s3.Transparency = 0.5; s3.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s3.Parent = vRow
+        local vLbl = Instance.new("TextLabel")
+        vLbl.Size = UDim2.new(1,-8,1,0); vLbl.Position = UDim2.new(0,8,0,0)
+        vLbl.BackgroundTransparency = 1; vLbl.Text = "v" .. entry.ver
+        vLbl.Font = Enum.Font.GothamBold; vLbl.TextSize = 11
+        vLbl.TextColor3 = T.accent
+        vLbl.TextXAlignment = Enum.TextXAlignment.Left; vLbl.Parent = vRow
+
+        -- Change lines
+        local linesText = Instance.new("TextLabel")
+        linesText.Size = UDim2.new(1,0,0,0); linesText.AutomaticSize = Enum.AutomaticSize.Y
+        linesText.BackgroundTransparency = 1; linesText.TextWrapped = true
+        linesText.Font = Enum.Font.GothamBlack; linesText.TextSize = 10
+        linesText.TextColor3 = T.textDim; linesText.TextXAlignment = Enum.TextXAlignment.Left
+        linesText.Text = table.concat(entry.lines, "\n")
+        linesText.Parent = infoTab
+    end
+
+    -- ── STATUS BAR ───────────────────────────────────────
+
+    local sb2 = Instance.new("TextLabel")
+    sb2.Size = UDim2.new(1,0,0,12); sb2.Position = UDim2.new(0,0,1,-14)
+    sb2.BackgroundColor3 = T.bg2; sb2.BorderSizePixel = 0
+    sb2.Text = "Q  aim  ·  RCtrl  hide  ·  Silver Hub  v" .. VERSION
+    sb2.Font = Enum.Font.GothamBlack; sb2.TextSize = 8
+    sb2.TextColor3 = T.textDim; sb2.TextXAlignment = Enum.TextXAlignment.Center; sb2.Parent = win
+    Instance.new("UICorner",sb2).CornerRadius = UDim.new(0,4)
+end
+
+createUI()
+
+-- ─────────────────────────────────────────────────────────
+--  INPUTS
+-- ─────────────────────────────────────────────────────────
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    -- Keybind rebinding (no gpe check, we want to capture anything)
+    if listeningFor then
+        if input.KeyCode ~= Enum.KeyCode.Unknown then
+            S[listeningFor] = input.KeyCode
+            listeningFor = nil
+            -- Update button text across the UI
+            for _, obj in ipairs(player.PlayerGui.SilverHubV2.Window:GetDescendants()) do
+                if obj:IsA("TextButton") and obj:GetAttribute("SettingKey") == listeningFor then
+                    -- already nil, so use the stored key directly
+                end
+            end
+            -- Just refresh the two known buttons
+            if aimKeyBtn then
+                aimKeyBtn.Text = tostring(S.KB_AIM):gsub("Enum.KeyCode.","")
+                aimKeyBtn.TextColor3 = T.accent
+                local ks2 = aimKeyBtn:FindFirstChildOfClass("UIStroke")
+                if ks2 then TweenService:Create(ks2,TweenInfo.new(0.1),{Color=T.border}):Play() end
+            end
+            if guiKeyBtn then
+                guiKeyBtn.Text = tostring(S.KB_GUI):gsub("Enum.KeyCode.","")
+                guiKeyBtn.TextColor3 = T.accent
+                local ks2 = guiKeyBtn:FindFirstChildOfClass("UIStroke")
+                if ks2 then TweenService:Create(ks2,TweenInfo.new(0.1),{Color=T.border}):Play() end
+            end
+        end
+        return  -- swallow input while listening
+    end
+
+    if gpe then return end
+    if input.KeyCode == S.KB_AIM then
+        S.Enabled = not S.Enabled
+    elseif input.KeyCode == S.KB_GUI then
+        if mainGui then mainGui.Enabled = not mainGui.Enabled end
+    end
+end)
+
+-- ─────────────────────────────────────────────────────────
+--  MAIN LOOP
+-- ─────────────────────────────────────────────────────────
+
+RunService.RenderStepped:Connect(function(dt)
+    if not cfg then return end
+
+    currentTarget = getBestTarget()
+
+    if targetLabelRef then
+        if currentTarget then
+            targetLabelRef.Text       = ">> " .. currentTarget.Name
+            targetLabelRef.TextColor3 = Color3.fromRGB(100,245,120)
+        else
+            local maps   = workspace:FindFirstChild("Maps")
+            local noMap  = cfg.targetType == "pandi" and maps and #maps:GetChildren() == 0
+            targetLabelRef.Text       = noMap and "select a map" or "no target"
+            targetLabelRef.TextColor3 = T.textDim
+        end
+    end
+
+    updateFOVCircle()
+
+    if S.Enabled and (not S.RequireTool or isToolEquipped()) then
+        local target = currentTarget
+        if target then
+            local pos = getAimPosition(target)
+            if pos then
+                local cf    = camera.CFrame
+                local goal  = CFrame.lookAt(cf.Position, pos)
+                local alpha = 1 - (1 - math.clamp(S.AimbotStrength,0,1)) ^ (dt * 60)
+                camera.CFrame = cf:Lerp(goal, alpha)
+            end
+        end
+    end
+
+    if currentTarget then tryTriggerbot(currentTarget) end
+end)
