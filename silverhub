@@ -1,5 +1,5 @@
 --[[
-  SILVER HUB  ·  v2.1  ·  VenturaUI Edition
+  SILVER HUB  ·  v2.2  ·  VenturaUI Edition
   @hadryenxyz
 --]]
 
@@ -15,9 +15,14 @@ local Library = loadstring(game:HttpGet(
 --  VERSION / CHANGELOG
 -- ─────────────────────────────────────────────────────────
 
-local VERSION = "2.1"
+local VERSION = "2.2"
 
 local CHANGELOG = {
+    { ver = "2.2", lines = {
+        "+ Universal mode (aims at players)",
+        "+ Auto-fallback for unknown games",
+        "~ No more dead screen on undetected game",
+    }},
     { ver = "2.1", lines = {
         "+ Migrated to VenturaUI",
         "+ Cleaner slider-based controls",
@@ -98,8 +103,18 @@ local REGISTRY = {
     },
 }
 
-local cfg    = REGISTRY[PlaceId]
-local ACCENT = cfg and cfg.accent or Color3.fromRGB(195, 195, 220)
+-- Unknown game → universal fallback (aims at players)
+local cfg = REGISTRY[PlaceId] or {
+    name       = "Universal",
+    accent     = Color3.fromRGB(195, 195, 215),
+    prediction = false,
+    animations = false,
+    requireTool = false,
+    targetType = "players",
+}
+
+local isUniversal = cfg.name == "Universal"
+local ACCENT      = cfg.accent
 
 -- ─────────────────────────────────────────────────────────
 --  SETTINGS
@@ -166,7 +181,7 @@ local function startAnimLoop(character)
     end)
 end
 
-if cfg and cfg.animations then
+if cfg.animations then
     player.CharacterAdded:Connect(function(char)
         if S.AnimsEnabled then
             task.delay(0.5, function() startAnimLoop(char) end)
@@ -218,11 +233,23 @@ local _daHoodContainer
 local currentTarget = nil
 
 local function getTargetList()
-    if not cfg then return {} end
     local list = {}
     local tt   = cfg.targetType
 
-    if tt == "pandi" then
+    if tt == "players" then
+        -- Universal mode: aim at all other players
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p == player then continue end
+            local char = p.Character
+            if not char then continue end
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hrp and hum and hum.Health > 0 then
+                table.insert(list, char)
+            end
+        end
+
+    elseif tt == "pandi" then
         local maps = workspace:FindFirstChild("Maps")
         if not maps then return list end
         for _, mapChild in ipairs(maps:GetChildren()) do
@@ -281,6 +308,7 @@ local function getTargetList()
             end
         end
     end
+
     return list
 end
 
@@ -307,7 +335,7 @@ local function getAimPosition(target)
     local part = getAimPart(target)
     if not part then return nil end
     local basePos = part.Position
-    if not cfg or not cfg.prediction or not S.UsePrediction then return basePos end
+    if not cfg.prediction or not S.UsePrediction then return basePos end
     local vel        = part.AssemblyLinearVelocity
     local dist       = (basePos - camera.CFrame.Position).Magnitude
     local travelTime = dist / math.max(S.BulletSpeed, 1)
@@ -380,11 +408,9 @@ end
 --  VENTURA GUI
 -- ─────────────────────────────────────────────────────────
 
-local subtitleCycle = cfg and { cfg.name } or { "Universal", "Unknown Game" }
-
 local GUI = Library:new({
     name        = "SILVER HUB",
-    subtitle    = subtitleCycle,
+    subtitle    = isUniversal and { "Universal Mode", "Targeting Players" } or { cfg.name },
     accent      = ACCENT,
     toggleKey   = Enum.KeyCode.Insert,
     minimizeKey = Enum.KeyCode.K,
@@ -406,7 +432,6 @@ AimTab:Toggle({
     callback = function(v) S.Enabled = v end,
 })
 
--- Strength: 0–100 mapped to 0.0–1.0
 AimTab:Slider({
     name     = "Smoothness",
     min      = 1, max = 100, default = 8,
@@ -456,7 +481,7 @@ AimTab:Slider({
 
 -- ── Tool Check  (Da Track games only) ────────
 
-if cfg and cfg.requireTool then
+if cfg.requireTool then
     AimTab:Section({ name = "Tool Check" })
     AimTab:Toggle({
         name        = "Require Tool",
@@ -468,7 +493,7 @@ end
 
 -- ── Prediction  (Da Track games only) ────────
 
-if cfg and cfg.prediction then
+if cfg.prediction then
     AimTab:Section({ name = "Prediction" })
 
     AimTab:Toggle({
@@ -487,7 +512,7 @@ end
 
 -- ── Animations  (Da Track games only) ────────
 
-if cfg and cfg.animations then
+if cfg.animations then
     AimTab:Section({ name = "Animations" })
 
     AimTab:Toggle({
@@ -515,7 +540,8 @@ local InfoTab = GUI:CreateTab({ name = "Info", icon = "📋" })
 InfoTab:Section({ name = "Session" })
 
 InfoTab:Label({ text = "Version    :  v" .. VERSION })
-InfoTab:Label({ text = "Game       :  " .. (cfg and cfg.name or "Unknown") })
+InfoTab:Label({ text = "Game       :  " .. cfg.name })
+InfoTab:Label({ text = "Mode       :  " .. (isUniversal and "Universal (Players)" or "Registry") })
 InfoTab:Label({ text = "Place ID   :  " .. tostring(PlaceId) })
 InfoTab:Label({ text = "Scripter   :  @hadryenxyz" })
 
@@ -527,6 +553,7 @@ InfoTab:Label({ text = "Reflex Aim Trainer" })
 InfoTab:Label({ text = "Da Track" })
 InfoTab:Label({ text = "Da Track Legacy" })
 InfoTab:Label({ text = "Da Hood Bot Aim Trainer" })
+InfoTab:Label({ text = "Any other game  →  Universal" })
 
 InfoTab:Separator()
 InfoTab:Section({ name = "Keybinds" })
@@ -548,7 +575,7 @@ for _, entry in ipairs(CHANGELOG) do
 end
 
 -- ─────────────────────────────────────────────────────────
---  KEYBIND  (Q = toggle aimbot, handled outside GUI)
+--  KEYBIND
 -- ─────────────────────────────────────────────────────────
 
 UserInputService.InputBegan:Connect(function(input, gpe)
@@ -563,8 +590,10 @@ end)
 -- ─────────────────────────────────────────────────────────
 
 task.delay(1.5, function()
-    local gameName = cfg and cfg.name or "Unknown game"
-    Library.notify("Silver Hub", "Loaded · " .. gameName, 4)
+    local msg = isUniversal
+        and "Universal mode · targeting players"
+        or  "Loaded · " .. cfg.name
+    Library.notify("Silver Hub", msg, 4)
 end)
 
 -- ─────────────────────────────────────────────────────────
@@ -572,8 +601,6 @@ end)
 -- ─────────────────────────────────────────────────────────
 
 RunService.RenderStepped:Connect(function(dt)
-    if not cfg then return end
-
     currentTarget = getBestTarget()
     updateFOVCircle()
 
