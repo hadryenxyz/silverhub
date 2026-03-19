@@ -593,7 +593,7 @@ task.delay(1.5, function()
     local msg = isUniversal
         and "Universal mode · targeting players"
         or  "Loaded · " .. cfg.name
-    Library.notify("Silver Hub", msg, 4)
+    Gui.notify("Silver Hub", msg, 4)
 end)
 
 -- ─────────────────────────────────────────────────────────
