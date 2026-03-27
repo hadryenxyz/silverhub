@@ -1,5 +1,5 @@
 --[[
-  SILVER HUB  ·  v2.2  ·  VenturaUI Edition
+  SILVER HUB  ·  v2.3  ·  VenturaUI Edition
   @hadryenxyz
 --]]
 
@@ -15,9 +15,15 @@ local Library = loadstring(game:HttpGet(
 --  VERSION / CHANGELOG
 -- ─────────────────────────────────────────────────────────
 
-local VERSION = "2.2"
+local VERSION = "2.3"
 
 local CHANGELOG = {
+    { ver = "2.3", lines = {
+        "+ Farm tab (Loop TP + Point Calculator)",
+        "+ Live Points reading from leaderstats",
+        "+ New game added to registry",
+        "~ Fixed GUI.notify typo",
+    }},
     { ver = "2.2", lines = {
         "+ Universal mode (aims at players)",
         "+ Auto-fallback for unknown games",
@@ -32,7 +38,6 @@ local CHANGELOG = {
         "+ Complete UI rewrite",
         "+ Tab system: Aim / Settings / Info",
         "+ Wall check",
-        "+ Auto-updater via launcher",
         "+ Changelogs panel",
         "+ Hub settings tab",
         "~ Improved target acquisition",
@@ -70,47 +75,64 @@ local REGISTRY = {
         accent     = Color3.fromRGB(80, 200, 255),
         prediction = false, animations = false, requireTool = false,
         targetType = "pandi",
+        hasFarm    = false,
     },
     [6159892946] = {
         name       = "Aim Trainer by Avallachi",
         accent     = Color3.fromRGB(255, 160, 80),
         prediction = false, animations = false, requireTool = false,
         targetType = "workspaceTargetsParts",
+        hasFarm    = false,
     },
     [75159825516372] = {
         name       = "Da Track",
         accent     = Color3.fromRGB(160, 110, 255),
         prediction = true, animations = true, requireTool = true,
         targetType = "bots",
+        hasFarm    = false,
     },
     [99339014518999] = {
         name       = "Da Track Legacy",
         accent     = Color3.fromRGB(130, 85, 230),
         prediction = true, animations = true, requireTool = true,
         targetType = "bots",
+        hasFarm    = false,
     },
     [5880351207] = {
         name       = "Reflex Aim Trainer",
         accent     = Color3.fromRGB(80, 255, 160),
         prediction = false, animations = false, requireTool = false,
         targetType = "workspaceTargetsParts",
+        hasFarm    = false,
     },
     [72440205375181] = {
         name       = "Da Hood Bot Aim Trainer",
         accent     = Color3.fromRGB(255, 210, 60),
         prediction = true, animations = true, requireTool = true,
         targetType = "daHoodBots",
+        hasFarm    = false,
+    },
+
+    [101069406914797] = {
+        name        = "Wraparound Practice",
+        accent      = Color3.fromRGB(255, 180, 60),
+        prediction  = false, animations = false, requireTool = false,
+        targetType  = "players",
+        hasFarm     = true,
+        farmTarget  = Vector3.new(680, 17, -200),
+        farmDelay   = 3,
+        pointsPerLoop = 25000,
+        pointsStat  = "Points",        
     },
 }
 
--- Unknown game → universal fallback (aims at players)
+-- Unknown game → universal fallback
 local cfg = REGISTRY[PlaceId] or {
-    name       = "Universal",
-    accent     = Color3.fromRGB(195, 195, 215),
-    prediction = false,
-    animations = false,
-    requireTool = false,
-    targetType = "players",
+    name        = "Universal",
+    accent      = Color3.fromRGB(195, 195, 215),
+    prediction  = false, animations = false, requireTool = false,
+    targetType  = "players",
+    hasFarm     = false,
 }
 
 local isUniversal = cfg.name == "Universal"
@@ -237,7 +259,6 @@ local function getTargetList()
     local tt   = cfg.targetType
 
     if tt == "players" then
-        -- Universal mode: aim at all other players
         for _, p in ipairs(Players:GetPlayers()) do
             if p == player then continue end
             local char = p.Character
@@ -405,6 +426,30 @@ local function updateFOVCircle()
 end
 
 -- ─────────────────────────────────────────────────────────
+--  FARM MODULE  (only built when hasFarm = true)
+-- ─────────────────────────────────────────────────────────
+
+local farmLoops  = 0
+local farmActive = false
+local farmThread = nil
+
+local function getCurrentPoints()
+    local ls = player:FindFirstChild("leaderstats")
+    local pt = ls and ls:FindFirstChild(cfg.pointsStat or "Points")
+    return pt and pt.Value or 0
+end
+
+local function formatTime(secs)
+    secs = math.floor(secs)
+    local h = math.floor(secs / 3600)
+    local m = math.floor((secs % 3600) / 60)
+    local s = secs % 60
+    if h > 0 then return string.format("%dh %dm %ds", h, m, s)
+    elseif m > 0 then return string.format("%dm %ds", m, s)
+    else return string.format("%ds", s) end
+end
+
+-- ─────────────────────────────────────────────────────────
 --  VENTURA GUI
 -- ─────────────────────────────────────────────────────────
 
@@ -462,8 +507,6 @@ AimTab:Toggle({
     end,
 })
 
--- ── Triggerbot ───────────────────────────────
-
 AimTab:Section({ name = "Triggerbot" })
 
 AimTab:Toggle({
@@ -479,8 +522,6 @@ AimTab:Slider({
     callback = function(v) S.TrigFOV = v end,
 })
 
--- ── Tool Check  (Da Track games only) ────────
-
 if cfg.requireTool then
     AimTab:Section({ name = "Tool Check" })
     AimTab:Toggle({
@@ -491,17 +532,13 @@ if cfg.requireTool then
     })
 end
 
--- ── Prediction  (Da Track games only) ────────
-
 if cfg.prediction then
     AimTab:Section({ name = "Prediction" })
-
     AimTab:Toggle({
         name     = "Prediction",
         default  = true,
         callback = function(v) S.UsePrediction = v end,
     })
-
     AimTab:Slider({
         name     = "Extra Offset",
         min      = 0, max = 15, default = 5,
@@ -510,11 +547,8 @@ if cfg.prediction then
     })
 end
 
--- ── Animations  (Da Track games only) ────────
-
 if cfg.animations then
     AimTab:Section({ name = "Animations" })
-
     AimTab:Toggle({
         name        = "Tryhard Anims",
         description = "Override default animations",
@@ -532,13 +566,145 @@ if cfg.animations then
 end
 
 -- ════════════════════════════════════════════
---  TAB 2 · INFO
+--  TAB 2 · FARM  (only shown if hasFarm = true)
+-- ════════════════════════════════════════════
+
+if cfg.hasFarm then
+    local FarmTab = GUI:CreateTab({ name = "Farm", icon = "🔄" })
+
+    -- ── Loop TP section ───────────────────────────────────
+
+    FarmTab:Section({ name = "Loop TP" })
+
+    local loopCountLabel = FarmTab:Label({
+        text = "Loops: 0"
+    })
+
+    local currentPtsLabel = FarmTab:Label({
+        text = "Points: loading..."
+    })
+
+    -- Update current points label live
+    task.spawn(function()
+        while true do
+            local pts = getCurrentPoints()
+            if currentPtsLabel then
+                pcall(function()
+                    currentPtsLabel:Set("Points: " .. tostring(pts))
+                end)
+            end
+            task.wait(2)
+        end
+    end)
+
+    -- We need a toggle for the farm loop
+    local farmToggle = FarmTab:Toggle({
+        name        = "Loop TP",
+        description = string.format("TPs to %.0f, %.0f, %.0f every %ds",
+            cfg.farmTarget.X, cfg.farmTarget.Y, cfg.farmTarget.Z, cfg.farmDelay),
+        default     = false,
+        callback    = function(v)
+            farmActive = v
+
+            if v then
+                farmThread = task.spawn(function()
+                    while farmActive do
+                        local char = player.Character
+                        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+                        if hrp then
+                            hrp.CFrame = CFrame.new(cfg.farmTarget)
+                        end
+                        task.wait(cfg.farmDelay)
+                        farmLoops = farmLoops + 1
+                        -- Update loop count label
+                        pcall(function()
+                            loopCountLabel:Set("Loops: " .. tostring(farmLoops))
+                        end)
+                    end
+                end)
+            else
+                if farmThread then
+                    task.cancel(farmThread)
+                    farmThread = nil
+                end
+            end
+        end,
+    })
+
+    -- ── Point Calculator section ───────────────────────────
+
+    FarmTab:Section({ name = "Point Calculator  (~" .. tostring(cfg.pointsPerLoop/1000) .. "k / loop)" })
+
+    local calcTarget   = 0
+    local loopsNeededL = FarmTab:Label({ text = "Loops needed:  —" })
+    local estTimeL     = FarmTab:Label({ text = "Est. time:  —" })
+    local progressL    = FarmTab:Label({ text = "Progress:  —" })
+
+    local function recalculate()
+        if calcTarget <= 0 then
+            pcall(function() loopsNeededL:Set("Loops needed:  —") end)
+            pcall(function() estTimeL:Set("Est. time:  —") end)
+            pcall(function() progressL:Set("Progress:  —") end)
+            return
+        end
+
+        local currentPts  = getCurrentPoints()
+        local stillNeeded = math.max(0, calcTarget - currentPts)
+        local needed      = math.ceil(stillNeeded / cfg.pointsPerLoop)
+        local totalSec    = needed * cfg.farmDelay
+
+        pcall(function()
+            loopsNeededL:Set(string.format(
+                "Loops needed:  %d  (%d pts left)", needed, stillNeeded))
+        end)
+
+        if needed == 0 then
+            pcall(function() estTimeL:Set("Est. time:  done! ✓") end)
+            pcall(function() progressL:Set("Progress:  ✓ Target reached!") end)
+        else
+            local loopsTotal = math.ceil(calcTarget / cfg.pointsPerLoop)
+            local loopsDone  = math.max(0, loopsTotal - needed)
+            local pct        = math.min(100, math.floor((loopsDone / loopsTotal) * 100))
+            pcall(function()
+                estTimeL:Set("Est. time:  " .. formatTime(totalSec))
+            end)
+            pcall(function()
+                progressL:Set(string.format(
+                    "Progress:  %d/%d  (%d%%)  ~%s left",
+                    loopsDone, loopsTotal, pct, formatTime(totalSec)))
+            end)
+        end
+    end
+
+    -- Input field for target points
+    FarmTab:Input({
+        name        = "Target Points",
+        placeholder = "e.g. 500000",
+        callback    = function(v)
+            local num = tonumber(v)
+            if num and num > 0 then
+                calcTarget = num
+                recalculate()
+            end
+        end,
+    })
+
+    -- Recalculate on every farm loop tick so progress stays live
+    task.spawn(function()
+        while true do
+            task.wait(cfg.farmDelay)
+            if calcTarget > 0 then recalculate() end
+        end
+    end)
+end
+
+-- ════════════════════════════════════════════
+--  TAB 3 · INFO
 -- ════════════════════════════════════════════
 
 local InfoTab = GUI:CreateTab({ name = "Info", icon = "📋" })
 
 InfoTab:Section({ name = "Session" })
-
 InfoTab:Label({ text = "Version    :  v" .. VERSION })
 InfoTab:Label({ text = "Game       :  " .. cfg.name })
 InfoTab:Label({ text = "Mode       :  " .. (isUniversal and "Universal (Players)" or "Registry") })
@@ -553,6 +719,7 @@ InfoTab:Label({ text = "Reflex Aim Trainer" })
 InfoTab:Label({ text = "Da Track" })
 InfoTab:Label({ text = "Da Track Legacy" })
 InfoTab:Label({ text = "Da Hood Bot Aim Trainer" })
+InfoTab:Label({ text = "Points Game  (101069406914797)" })
 InfoTab:Label({ text = "Any other game  →  Universal" })
 
 InfoTab:Separator()
@@ -562,7 +729,7 @@ InfoTab:Label({ text = "Minimize     :  K" })
 InfoTab:Label({ text = "Toggle Aim   :  Q" })
 
 -- ════════════════════════════════════════════
---  TAB 3 · CHANGELOG
+--  TAB 4 · CHANGELOG
 -- ════════════════════════════════════════════
 
 local LogTab = GUI:CreateTab({ name = "Changelog", icon = "📝" })
@@ -593,7 +760,7 @@ task.delay(1.5, function()
     local msg = isUniversal
         and "Universal mode · targeting players"
         or  "Loaded · " .. cfg.name
-    Gui.notify("Silver Hub", msg, 4)
+    GUI.notify("Silver Hub", msg, 4)
 end)
 
 -- ─────────────────────────────────────────────────────────
