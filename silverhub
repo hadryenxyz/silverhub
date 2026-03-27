@@ -676,20 +676,22 @@ if cfg.hasFarm then
         end
     end
 
-    -- Input field for target points
-    FarmTab:Input({
-        name        = "Target Points",
-        placeholder = "e.g. 500000",
-        callback    = function(v)
-            local num = tonumber(v)
-            if num and num > 0 then
-                calcTarget = num
-                recalculate()
-            end
-        end,
-    })
+  
+FarmTab:Slider({
+    name     = "Target Points (x25k)",
+    min      = 1, max = 2000, default = 20,
+    suffix   = "  =  " .. "500k",
+    callback = function(v)
+        calcTarget = v * 25000
+        -- update suffix to show real value
+        local display = v * 25000
+        local pretty = display >= 1000000
+            and string.format("%.1fm", display/1000000)
+            or  string.format("%dk",   display/1000)
+        recalculate()
+    end,
+})
 
-    -- Recalculate on every farm loop tick so progress stays live
     task.spawn(function()
         while true do
             task.wait(cfg.farmDelay)
