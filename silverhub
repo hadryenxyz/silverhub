@@ -679,7 +679,7 @@ if cfg.hasFarm then
   
 FarmTab:Slider({
     name     = "Target Points (x25k)",
-    min      = 1, max = 10000, default = 20,
+    min      = 1, max = 4000, default = 20,
     suffix   = "  =  " .. "500k",
     callback = function(v)
         calcTarget = v * 25000
