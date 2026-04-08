@@ -867,11 +867,13 @@ RunService.RenderStepped:Connect(function(dt)
 	updateFOVCircle()
 	
 	if ESP_ENABLED then
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p == player then continue end
-			local char = p.Character
-			if char and not espObjects[p] then
-				espObjects[p] = createESP(char)
+		while true do
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p == player then continue end
+				local char = p.Character
+				if char and not espObjects[p] then
+					espObjects[p] = createESP(char)
+				end
 			end
 		end
 	end
