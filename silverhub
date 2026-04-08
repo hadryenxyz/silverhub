@@ -1,56 +1,61 @@
 --[[
-  SILVER HUB  ·  v2.3  ·  VenturaUI Edition
+  SILVER HUB  ·  v2.4  ·  VenturaUI Edition
   @hadryenxyz
 --]]
 
--- ─────────────────────────────────────────────────────────
---  LOAD VENTURA UI
--- ─────────────────────────────────────────────────────────
 
 local Library = loadstring(game:HttpGet(
-    "https://codeberg.org/VenomVent/Ventura-UI/raw/branch/main/VenturaLibrary.lua"
-))()
+	"https://codeberg.org/VenomVent/Ventura-UI/raw/branch/main/VenturaLibrary.lua"
+	))()
 
 -- ─────────────────────────────────────────────────────────
 --  VERSION / CHANGELOG
 -- ─────────────────────────────────────────────────────────
 
-local VERSION = "2.3"
+local VERSION = "2.4"
 
 local CHANGELOG = {
-    { ver = "2.3", lines = {
-        "+ Farm tab (Loop TP + Point Calculator)",
-        "+ Live Points reading from leaderstats",
-        "+ New game added to registry",
-        "~ Fixed GUI.notify typo",
-    }},
-    { ver = "2.2", lines = {
-        "+ Universal mode (aims at players)",
-        "+ Auto-fallback for unknown games",
-        "~ No more dead screen on undetected game",
-    }},
-    { ver = "2.1", lines = {
-        "+ Migrated to VenturaUI",
-        "+ Cleaner slider-based controls",
-        "~ Same backend, new skin",
-    }},
-    { ver = "2.0", lines = {
-        "+ Complete UI rewrite",
-        "+ Tab system: Aim / Settings / Info",
-        "+ Wall check",
-        "+ Changelogs panel",
-        "+ Hub settings tab",
-        "~ Improved target acquisition",
-        "~ Prediction tuning",
-    }},
-    { ver = "1.0", lines = {
-        "+ Initial release",
-        "+ Game auto-detection (6 games)",
-        "+ Aimbot + Triggerbot",
-        "+ Prediction for Da Track",
-        "+ Animation override",
-        "+ FOV circle",
-    }},
+	{ ver = "2.4", lines = {
+		"+ Lock target system (no more target switching while aiming)",
+		"+ Ping-based prediction system (more accurate in online games)",
+		"+ MM2 support (prediction adapted to raycast-based weapons)",
+		"+ Added MM2 games to registry (MM2, MMV, 5v5 MilBase)",
+		"+ ESP system (highlight players)",
+		"~ Improved overall aim consistency",
+	}},
+	{ ver = "2.3", lines = {
+		"+ Farm tab (Loop TP + Point Calculator)",
+		"+ Live Points reading from leaderstats",
+		"+ New game added to registry",
+		"~ Fixed GUI.notify typo",
+	}},
+	{ ver = "2.2", lines = {
+		"+ Universal mode (aims at players)",
+		"+ Auto-fallback for unknown games",
+		"~ No more dead screen on undetected game",
+	}},
+	{ ver = "2.1", lines = {
+		"+ Migrated to VenturaUI",
+		"+ Cleaner slider-based controls",
+		"~ Same backend, new skin",
+	}},
+	{ ver = "2.0", lines = {
+		"+ Complete UI rewrite",
+		"+ Tab system: Aim / Settings / Info",
+		"+ Wall check",
+		"+ Changelogs panel",
+		"+ Hub settings tab",
+		"~ Improved target acquisition",
+		"~ Prediction tuning",
+	}},
+	{ ver = "1.0", lines = {
+		"+ Initial release",
+		"+ Game auto-detection (6 games)",
+		"+ Aimbot + Triggerbot",
+		"+ Prediction for Da Track",
+		"+ Animation override",
+		"+ FOV circle",
+	}},
 }
 
 -- ─────────────────────────────────────────────────────────
@@ -60,79 +65,114 @@ local CHANGELOG = {
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local Stats = game:GetService("Stats")
 
 local player  = Players.LocalPlayer
 local camera  = workspace.CurrentCamera
 local PlaceId = game.PlaceId
+local ESP_ENABLED = false
+local espObjects = {}
 
 -- ─────────────────────────────────────────────────────────
 --  GAME REGISTRY
 -- ─────────────────────────────────────────────────────────
 
 local REGISTRY = {
-    [9800976141] = {
-        name       = "Pandi's Aim Trainer",
-        accent     = Color3.fromRGB(80, 200, 255),
-        prediction = false, animations = false, requireTool = false,
-        targetType = "pandi",
-        hasFarm    = false,
-    },
-    [6159892946] = {
-        name       = "Aim Trainer by Avallachi",
-        accent     = Color3.fromRGB(255, 160, 80),
-        prediction = false, animations = false, requireTool = false,
-        targetType = "workspaceTargetsParts",
-        hasFarm    = false,
-    },
-    [75159825516372] = {
-        name       = "Da Track",
-        accent     = Color3.fromRGB(160, 110, 255),
-        prediction = true, animations = true, requireTool = true,
-        targetType = "bots",
-        hasFarm    = false,
-    },
-    [99339014518999] = {
-        name       = "Da Track Legacy",
-        accent     = Color3.fromRGB(130, 85, 230),
-        prediction = true, animations = true, requireTool = true,
-        targetType = "bots",
-        hasFarm    = false,
-    },
-    [5880351207] = {
-        name       = "Reflex Aim Trainer",
-        accent     = Color3.fromRGB(80, 255, 160),
-        prediction = false, animations = false, requireTool = false,
-        targetType = "workspaceTargetsParts",
-        hasFarm    = false,
-    },
-    [72440205375181] = {
-        name       = "Da Hood Bot Aim Trainer",
-        accent     = Color3.fromRGB(255, 210, 60),
-        prediction = true, animations = true, requireTool = true,
-        targetType = "daHoodBots",
-        hasFarm    = false,
-    },
+	[9800976141] = {
+		name       = "Pandi's Aim Trainer",
+		accent     = Color3.fromRGB(80, 200, 255),
+		prediction = false, animations = false, requireTool = false,
+		targetType = "pandi",
+		hasFarm    = false,
+	},
+	[6159892946] = {
+		name       = "Aim Trainer by Avallachi",
+		accent     = Color3.fromRGB(255, 160, 80),
+		prediction = false, animations = false, requireTool = false,
+		targetType = "workspaceTargetsParts",
+		hasFarm    = false,
+	},
+	[75159825516372] = {
+		name       = "Da Track",
+		accent     = Color3.fromRGB(160, 110, 255),
+		prediction = true, animations = true, requireTool = true,
+		targetType = "bots",
+		hasFarm    = false,
+	},
+	[99339014518999] = {
+		name       = "Da Track Legacy",
+		accent     = Color3.fromRGB(130, 85, 230),
+		prediction = true, animations = true, requireTool = true,
+		targetType = "bots",
+		hasFarm    = false,
+	},
+	[5880351207] = {
+		name       = "Reflex Aim Trainer",
+		accent     = Color3.fromRGB(80, 255, 160),
+		prediction = false, animations = false, requireTool = false,
+		targetType = "workspaceTargetsParts",
+		hasFarm    = false,
+	},
+	[72440205375181] = {
+		name       = "Da Hood Bot Aim Trainer",
+		accent     = Color3.fromRGB(255, 210, 60),
+		prediction = true, animations = true, requireTool = true,
+		targetType = "daHoodBots",
+		hasFarm    = false,
+	},
 
-    [101069406914797] = {
-        name        = "Wraparound Practice",
-        accent      = Color3.fromRGB(255, 180, 60),
-        prediction  = false, animations = false, requireTool = false,
-        targetType  = "players",
-        hasFarm     = true,
-        farmTarget  = Vector3.new(680, 17, -200),
-        farmDelay   = 3,
-        pointsPerLoop = 25000,
-        pointsStat  = "Points",        
-    },
+	[101069406914797] = {
+		name        = "Wraparound Practice",
+		accent      = Color3.fromRGB(255, 180, 60),
+		prediction  = false, animations = false, requireTool = false,
+		targetType  = "players",
+		hasFarm     = true,
+		farmTarget  = Vector3.new(680, 17, -200),
+		farmDelay   = 3,
+		pointsPerLoop = 25000,
+		pointsStat  = "Points",        
+	},
+	[142823291] = {
+		name       = "Murder Mystery 2",
+		accent     = Color3.fromRGB(255, 80, 80),
+		prediction = true,
+		animations = false,
+		requireTool = true,
+		targetType = "players",
+		hasFarm    = false,
+		mm2        = true,
+	},
+
+	[8665470667] = {
+		name       = "5v5 MM2 MilBase",
+		accent     = Color3.fromRGB(255, 120, 120),
+		prediction = true,
+		animations = false,
+		requireTool = true,
+		targetType = "players",
+		hasFarm    = false,
+		mm2        = true,
+	},
+
+	[125724255179297] = {
+		name       = "MMV",
+		accent     = Color3.fromRGB(255, 100, 100),
+		prediction = true,
+		animations = false,
+		requireTool = true,
+		targetType = "players",
+		hasFarm    = false,
+		mm2        = true,
+	},
 }
 
 -- Unknown game → universal fallback
 local cfg = REGISTRY[PlaceId] or {
-    name        = "Universal",
-    accent      = Color3.fromRGB(195, 195, 215),
-    prediction  = false, animations = false, requireTool = false,
-    targetType  = "players",
-    hasFarm     = false,
+	name        = "Universal",
+	accent      = Color3.fromRGB(195, 195, 215),
+	prediction  = false, animations = false, requireTool = false,
+	targetType  = "players",
+	hasFarm     = false,
 }
 
 local isUniversal = cfg.name == "Universal"
@@ -143,18 +183,19 @@ local ACCENT      = cfg.accent
 -- ─────────────────────────────────────────────────────────
 
 _G.SVLR_Settings = {
-    Enabled        = false,
-    AimbotStrength = 0.082,
-    FOV            = 20,
-    ShowFOVCircle  = false,
-    RequireTool    = false,
-    WallCheck      = true,
-    UsePrediction  = true,
-    PredOffset     = 4.5,
-    BulletSpeed    = 220,
-    TrigEnabled    = false,
-    TrigFOV        = 5,
-    AnimsEnabled   = false,
+	Enabled        = false,
+	AimbotStrength = 0.082,
+	FOV            = 20,
+	ShowFOVCircle  = false,
+	RequireTool    = false,
+	WallCheck      = true,
+	UsePrediction  = true,
+	PredOffset     = 4.5,
+	BulletSpeed    = 220,
+	TrigEnabled    = false,
+	TrigFOV        = 5,
+	AnimsEnabled   = false,
+	PingMultiplier = 1.0,
 }
 
 local S = _G.SVLR_Settings
@@ -164,51 +205,51 @@ local S = _G.SVLR_Settings
 -- ─────────────────────────────────────────────────────────
 
 local AnimIDs = {
-    idle1 = "rbxassetid://122257458498464",
-    idle2 = "rbxassetid://102357151005774",
-    walk  = "rbxassetid://616168032",
-    run   = "rbxassetid://616163682",
-    climb = "rbxassetid://1083439238",
-    jump  = "rbxassetid://10921242013",
-    fall  = "rbxassetid://707829716",
+	idle1 = "rbxassetid://122257458498464",
+	idle2 = "rbxassetid://102357151005774",
+	walk  = "rbxassetid://616168032",
+	run   = "rbxassetid://616163682",
+	climb = "rbxassetid://1083439238",
+	jump  = "rbxassetid://10921242013",
+	fall  = "rbxassetid://707829716",
 }
 
 local animThread
 
 local function stopAnimLoop()
-    if animThread then task.cancel(animThread) end
-    animThread = nil
+	if animThread then task.cancel(animThread) end
+	animThread = nil
 end
 
 local function startAnimLoop(character)
-    stopAnimLoop()
-    animThread = task.spawn(function()
-        while S.AnimsEnabled do
-            pcall(function()
-                local A = character:WaitForChild("Animate", 3)
-                if not A then return end
-                local function ms(track, id)
-                    if track and track.AnimationId ~= id then track.AnimationId = id end
-                end
-                ms(A.idle:FindFirstChild("Animation1"),  AnimIDs.idle1)
-                ms(A.idle:FindFirstChild("Animation2"),  AnimIDs.idle2)
-                ms(A.jump:FindFirstChild("jump"),        AnimIDs.jump)
-                ms(A.walk:FindFirstChild("WalkAnim"),    AnimIDs.walk)
-                ms(A.run:FindFirstChild("RunAnim"),      AnimIDs.run)
-                ms(A.climb:FindFirstChild("ClimbAnim"),  AnimIDs.climb)
-                ms(A.fall:FindFirstChild("FallAnim"),    AnimIDs.fall)
-            end)
-            task.wait(0.8)
-        end
-    end)
+	stopAnimLoop()
+	animThread = task.spawn(function()
+		while S.AnimsEnabled do
+			pcall(function()
+				local A = character:WaitForChild("Animate", 3)
+				if not A then return end
+				local function ms(track, id)
+					if track and track.AnimationId ~= id then track.AnimationId = id end
+				end
+				ms(A.idle:FindFirstChild("Animation1"),  AnimIDs.idle1)
+				ms(A.idle:FindFirstChild("Animation2"),  AnimIDs.idle2)
+				ms(A.jump:FindFirstChild("jump"),        AnimIDs.jump)
+				ms(A.walk:FindFirstChild("WalkAnim"),    AnimIDs.walk)
+				ms(A.run:FindFirstChild("RunAnim"),      AnimIDs.run)
+				ms(A.climb:FindFirstChild("ClimbAnim"),  AnimIDs.climb)
+				ms(A.fall:FindFirstChild("FallAnim"),    AnimIDs.fall)
+			end)
+			task.wait(0.8)
+		end
+	end)
 end
 
 if cfg.animations then
-    player.CharacterAdded:Connect(function(char)
-        if S.AnimsEnabled then
-            task.delay(0.5, function() startAnimLoop(char) end)
-        end
-    end)
+	player.CharacterAdded:Connect(function(char)
+		if S.AnimsEnabled then
+			task.delay(0.5, function() startAnimLoop(char) end)
+		end
+	end)
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -216,136 +257,151 @@ end
 -- ─────────────────────────────────────────────────────────
 
 local function isToolEquipped()
-    local char = player.Character
-    return char and char:FindFirstChildOfClass("Tool") ~= nil
+	local char = player.Character
+	return char and char:FindFirstChildOfClass("Tool") ~= nil
 end
 
 local function getAimPart(obj)
-    if obj:IsA("BasePart") then return obj end
-    if obj.PrimaryPart     then return obj.PrimaryPart end
-    local hrp = obj:FindFirstChild("HumanoidRootPart")
-    if hrp then return hrp end
-    return obj:FindFirstChildWhichIsA("BasePart")
+	if obj:IsA("BasePart") then return obj end
+	if obj.PrimaryPart     then return obj.PrimaryPart end
+	local hrp = obj:FindFirstChild("HumanoidRootPart")
+	if hrp then return hrp end
+	return obj:FindFirstChildWhichIsA("BasePart")
 end
 
 local WALL_PARAMS = RaycastParams.new()
 WALL_PARAMS.FilterType = Enum.RaycastFilterType.Exclude
 
 local function isVisible(target)
-    if not S.WallCheck then return true end
-    local part = getAimPart(target)
-    if not part then return true end
-    local char   = player.Character
-    local ignore = char and {char} or {}
-    table.insert(ignore, target:IsA("Model") and target or target.Parent)
-    WALL_PARAMS.FilterDescendantsInstances = ignore
-    local origin = camera.CFrame.Position
-    local result = workspace:Raycast(origin, part.Position - origin, WALL_PARAMS)
-    if not result then return true end
-    local hit = result.Instance
-    if hit:IsDescendantOf(target) or hit == target then return true end
-    return false
+	if not S.WallCheck then return true end
+	local part = getAimPart(target)
+	if not part then return true end
+	local char   = player.Character
+	local ignore = char and {char} or {}
+	table.insert(ignore, target:IsA("Model") and target or target.Parent)
+	WALL_PARAMS.FilterDescendantsInstances = ignore
+	local origin = camera.CFrame.Position
+	local result = workspace:Raycast(origin, part.Position - origin, WALL_PARAMS)
+	if not result then return true end
+	local hit = result.Instance
+	if hit:IsDescendantOf(target) or hit == target then return true end
+	return false
 end
 
+local function getPing()
+	local str = Stats.Network.ServerStatsItem["Data Ping"]:GetValueString()
+	local ping = tonumber(string.match(str, "%d+"))
+	return (ping or 50) / 1000
+end
+
+local function createESP(char)
+	local h = Instance.new("Highlight")
+	h.FillColor = Color3.fromRGB(255, 0, 0)
+	h.OutlineColor = Color3.fromRGB(255,255,255)
+	h.FillTransparency = 0.5
+	h.Parent = char
+	return h
+end
 -- ─────────────────────────────────────────────────────────
 --  TARGET ACQUISITION
 -- ─────────────────────────────────────────────────────────
 
 local _daHoodContainer
 local currentTarget = nil
+local lockedTarget = nil
 
 local function getTargetList()
-    local list = {}
-    local tt   = cfg.targetType
+	local list = {}
+	local tt   = cfg.targetType
 
-    if tt == "players" then
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p == player then continue end
-            local char = p.Character
-            if not char then continue end
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hrp and hum and hum.Health > 0 then
-                table.insert(list, char)
-            end
-        end
+	if tt == "players" then
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p == player then continue end
+			local char = p.Character
+			if not char then continue end
+			local hrp = char:FindFirstChild("HumanoidRootPart")
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hrp and hum and hum.Health > 0 then
+				table.insert(list, char)
+			end
+		end
 
-    elseif tt == "pandi" then
-        local maps = workspace:FindFirstChild("Maps")
-        if not maps then return list end
-        for _, mapChild in ipairs(maps:GetChildren()) do
-            local tf = mapChild:FindFirstChild("Targets")
-            if not tf then continue end
-            for _, obj in ipairs(tf:GetDescendants()) do
-                if obj:IsA("Model") and getAimPart(obj) then table.insert(list, obj) end
-            end
-        end
+	elseif tt == "pandi" then
+		local maps = workspace:FindFirstChild("Maps")
+		if not maps then return list end
+		for _, mapChild in ipairs(maps:GetChildren()) do
+			local tf = mapChild:FindFirstChild("Targets")
+			if not tf then continue end
+			for _, obj in ipairs(tf:GetDescendants()) do
+				if obj:IsA("Model") and getAimPart(obj) then table.insert(list, obj) end
+			end
+		end
 
-    elseif tt == "workspaceTargetsParts" then
-        local tf = workspace:FindFirstChild("Targets")
-        if not tf then return list end
-        for _, obj in ipairs(tf:GetChildren()) do
-            if obj:IsA("BasePart") then table.insert(list, obj) end
-        end
+	elseif tt == "workspaceTargetsParts" then
+		local tf = workspace:FindFirstChild("Targets")
+		if not tf then return list end
+		for _, obj in ipairs(tf:GetChildren()) do
+			if obj:IsA("BasePart") then table.insert(list, obj) end
+		end
 
-    elseif tt == "bots" then
-        local folder = workspace:FindFirstChild("Bots")
-        if not folder then return list end
-        for _, bot in ipairs(folder:GetChildren()) do
-            local hrp = bot:FindFirstChild("HumanoidRootPart")
-            local hum = bot:FindFirstChildOfClass("Humanoid")
-            if hrp and hum and hum.Health > 0 then table.insert(list, bot) end
-        end
+	elseif tt == "bots" then
+		local folder = workspace:FindFirstChild("Bots")
+		if not folder then return list end
+		for _, bot in ipairs(folder:GetChildren()) do
+			local hrp = bot:FindFirstChild("HumanoidRootPart")
+			local hum = bot:FindFirstChildOfClass("Humanoid")
+			if hrp and hum and hum.Health > 0 then table.insert(list, bot) end
+		end
 
-    elseif tt == "daHoodBots" then
-        for _, child in ipairs(workspace:GetChildren()) do
-            if child.Name == "DaTNTShow52" then
-                local hrp = child:FindFirstChild("HumanoidRootPart")
-                local hum = child:FindFirstChildOfClass("Humanoid")
-                if hrp and hum and hum.Health > 0 then table.insert(list, child) end
-            end
-        end
-        if #list == 0 then
-            if not _daHoodContainer or not _daHoodContainer.Parent then
-                _daHoodContainer = nil
-                for _, child in ipairs(workspace:GetChildren()) do
-                    if not child:IsA("Terrain") and not child:IsA("Camera") then
-                        local first = child:GetChildren()[1]
-                        if first and first:FindFirstChild("HumanoidRootPart") then
-                            _daHoodContainer = child; break
-                        end
-                    end
-                end
-                if not _daHoodContainer then
-                    _daHoodContainer = workspace:GetChildren()[9]
-                end
-            end
-            if _daHoodContainer then
-                for _, bot in ipairs(_daHoodContainer:GetChildren()) do
-                    local hrp = bot:FindFirstChild("HumanoidRootPart")
-                    local hum = bot:FindFirstChildOfClass("Humanoid")
-                    if hrp and hum and hum.Health > 0 then table.insert(list, bot) end
-                end
-            end
-        end
-    end
+	elseif tt == "daHoodBots" then
+		for _, child in ipairs(workspace:GetChildren()) do
+			if child.Name == "DaTNTShow52" then
+				local hrp = child:FindFirstChild("HumanoidRootPart")
+				local hum = child:FindFirstChildOfClass("Humanoid")
+				if hrp and hum and hum.Health > 0 then table.insert(list, child) end
+			end
+		end
+		if #list == 0 then
+			if not _daHoodContainer or not _daHoodContainer.Parent then
+				_daHoodContainer = nil
+				for _, child in ipairs(workspace:GetChildren()) do
+					if not child:IsA("Terrain") and not child:IsA("Camera") then
+						local first = child:GetChildren()[1]
+						if first and first:FindFirstChild("HumanoidRootPart") then
+							_daHoodContainer = child; break
+						end
+					end
+				end
+				if not _daHoodContainer then
+					_daHoodContainer = workspace:GetChildren()[9]
+				end
+			end
+			if _daHoodContainer then
+				for _, bot in ipairs(_daHoodContainer:GetChildren()) do
+					local hrp = bot:FindFirstChild("HumanoidRootPart")
+					local hum = bot:FindFirstChildOfClass("Humanoid")
+					if hrp and hum and hum.Health > 0 then table.insert(list, bot) end
+				end
+			end
+		end
+	end
 
-    return list
+	return list
 end
 
 local function getBestTarget()
-    local best, bestAngle = nil, math.huge
-    for _, obj in ipairs(getTargetList()) do
-        local part = getAimPart(obj)
-        if not part then continue end
-        local dir   = part.Position - camera.CFrame.Position
-        local dot   = math.clamp(camera.CFrame.LookVector:Dot(dir.Unit), -1, 1)
-        local angle = math.deg(math.acos(dot))
-        if angle < S.FOV and angle < bestAngle and isVisible(obj) then
-            bestAngle = angle; best = obj
-        end
-    end
-    return best
+	local best, bestAngle = nil, math.huge
+	for _, obj in ipairs(getTargetList()) do
+		local part = getAimPart(obj)
+		if not part then continue end
+		local dir   = part.Position - camera.CFrame.Position
+		local dot   = math.clamp(camera.CFrame.LookVector:Dot(dir.Unit), -1, 1)
+		local angle = math.deg(math.acos(dot))
+		if angle < S.FOV and angle < bestAngle and isVisible(obj) then
+			bestAngle = angle; best = obj
+		end
+	end
+	return best
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -353,48 +409,57 @@ end
 -- ─────────────────────────────────────────────────────────
 
 local function getAimPosition(target)
-    local part = getAimPart(target)
-    if not part then return nil end
-    local basePos = part.Position
-    if not cfg.prediction or not S.UsePrediction then return basePos end
-    local vel        = part.AssemblyLinearVelocity
-    local dist       = (basePos - camera.CFrame.Position).Magnitude
-    local travelTime = dist / math.max(S.BulletSpeed, 1)
-    local scaledVel  = Vector3.new(vel.X, vel.Y * 0.1, vel.Z)
-    local predicted  = basePos + scaledVel * travelTime
-    local horizVel   = Vector3.new(vel.X, 0, vel.Z)
-    if horizVel.Magnitude > 0.5 and S.PredOffset > 0 then
-        predicted = predicted + horizVel.Unit * S.PredOffset
-    end
-    return predicted
-end
+	local part = getAimPart(target)
+	if not part then return nil end
 
+	local basePos = part.Position
+
+	if not cfg.prediction or not S.UsePrediction then
+		return basePos
+	end
+
+	local vel = part.AssemblyLinearVelocity
+
+	-- MM2
+	if cfg.mm2 then
+		local ping = getPing()
+		return basePos + (vel * ping * 1.1)
+	end
+
+	-- UNIVERSAL
+	local dist = (basePos - camera.CFrame.Position).Magnitude
+	local travelTime = dist / math.max(S.BulletSpeed, 1)
+
+	local ping = getPing()
+
+	return basePos + (vel * travelTime) + (vel * ping * S.PingMultiplier)
+end
 -- ─────────────────────────────────────────────────────────
 --  TRIGGERBOT
 -- ─────────────────────────────────────────────────────────
 
 local function fireShot()
-    task.spawn(function()
-        pcall(function() mouse1press(); task.wait(0.06); mouse1release() end)
-    end)
+	task.spawn(function()
+		pcall(function() mouse1press(); task.wait(0.06); mouse1release() end)
+	end)
 end
 
 local trigCooldown = false
 
 local function tryTriggerbot(target)
-    if not S.TrigEnabled or trigCooldown or not target then return end
-    if S.RequireTool and not isToolEquipped() then return end
-    local part = getAimPart(target)
-    if not part then return end
-    local dot = math.clamp(camera.CFrame.LookVector:Dot(
-        (part.Position - camera.CFrame.Position).Unit), -1, 1)
-    if math.deg(math.acos(dot)) < S.TrigFOV then
-        trigCooldown = true
-        task.delay(0.04, function()
-            fireShot()
-            task.delay(0.18, function() trigCooldown = false end)
-        end)
-    end
+	if not S.TrigEnabled or trigCooldown or not target then return end
+	if S.RequireTool and not isToolEquipped() then return end
+	local part = getAimPart(target)
+	if not part then return end
+	local dot = math.clamp(camera.CFrame.LookVector:Dot(
+		(part.Position - camera.CFrame.Position).Unit), -1, 1)
+	if math.deg(math.acos(dot)) < S.TrigFOV then
+		trigCooldown = true
+		task.delay(0.04, function()
+			fireShot()
+			task.delay(0.18, function() trigCooldown = false end)
+		end)
+	end
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -404,25 +469,25 @@ end
 local fovCircle
 
 local function ensureFOVCircle()
-    if fovCircle then return end
-    fovCircle              = Drawing.new("Circle")
-    fovCircle.Thickness    = 1
-    fovCircle.Filled       = false
-    fovCircle.NumSides     = 64
-    fovCircle.Transparency = 0.6
+	if fovCircle then return end
+	fovCircle              = Drawing.new("Circle")
+	fovCircle.Thickness    = 1
+	fovCircle.Filled       = false
+	fovCircle.NumSides     = 64
+	fovCircle.Transparency = 0.6
 end
 
 local function updateFOVCircle()
-    ensureFOVCircle()
-    if not S.ShowFOVCircle then fovCircle.Visible = false return end
-    local vp  = camera.ViewportSize
-    local rad = (math.tan(math.rad(S.FOV)) /
-                 math.tan(math.rad(camera.FieldOfView * 0.5))) * (vp.Y * 0.5)
-    fovCircle.Position     = Vector2.new(vp.X * 0.5, vp.Y * 0.5)
-    fovCircle.Radius       = rad
-    fovCircle.Visible      = true
-    fovCircle.Color        = currentTarget and Color3.fromRGB(100,245,120) or Color3.fromRGB(200,200,220)
-    fovCircle.Transparency = currentTarget and 0.25 or 0.6
+	ensureFOVCircle()
+	if not S.ShowFOVCircle then fovCircle.Visible = false return end
+	local vp  = camera.ViewportSize
+	local rad = (math.tan(math.rad(S.FOV)) /
+		math.tan(math.rad(camera.FieldOfView * 0.5))) * (vp.Y * 0.5)
+	fovCircle.Position     = Vector2.new(vp.X * 0.5, vp.Y * 0.5)
+	fovCircle.Radius       = rad
+	fovCircle.Visible      = true
+	fovCircle.Color        = currentTarget and Color3.fromRGB(100,245,120) or Color3.fromRGB(200,200,220)
+	fovCircle.Transparency = currentTarget and 0.25 or 0.6
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -434,19 +499,19 @@ local farmActive = false
 local farmThread = nil
 
 local function getCurrentPoints()
-    local ls = player:FindFirstChild("leaderstats")
-    local pt = ls and ls:FindFirstChild(cfg.pointsStat or "Points")
-    return pt and pt.Value or 0
+	local ls = player:FindFirstChild("leaderstats")
+	local pt = ls and ls:FindFirstChild(cfg.pointsStat or "Points")
+	return pt and pt.Value or 0
 end
 
 local function formatTime(secs)
-    secs = math.floor(secs)
-    local h = math.floor(secs / 3600)
-    local m = math.floor((secs % 3600) / 60)
-    local s = secs % 60
-    if h > 0 then return string.format("%dh %dm %ds", h, m, s)
-    elseif m > 0 then return string.format("%dm %ds", m, s)
-    else return string.format("%ds", s) end
+	secs = math.floor(secs)
+	local h = math.floor(secs / 3600)
+	local m = math.floor((secs % 3600) / 60)
+	local s = secs % 60
+	if h > 0 then return string.format("%dh %dm %ds", h, m, s)
+	elseif m > 0 then return string.format("%dm %ds", m, s)
+	else return string.format("%ds", s) end
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -454,13 +519,13 @@ end
 -- ─────────────────────────────────────────────────────────
 
 local GUI = Library:new({
-    name        = "SILVER HUB",
-    subtitle    = isUniversal and { "Universal Mode", "Targeting Players" } or { cfg.name },
-    accent      = ACCENT,
-    toggleKey   = Enum.KeyCode.Insert,
-    minimizeKey = Enum.KeyCode.K,
-    loadingTime = 1.2,
-    keyEnabled  = false,
+	name        = "SILVER HUB",
+	subtitle    = isUniversal and { "Universal Mode", "Targeting Players" } or { cfg.name },
+	accent      = ACCENT,
+	toggleKey   = Enum.KeyCode.Insert,
+	minimizeKey = Enum.KeyCode.K,
+	loadingTime = 1.2,
+	keyEnabled  = false,
 })
 
 -- ════════════════════════════════════════════
@@ -472,97 +537,114 @@ local AimTab = GUI:CreateTab({ name = "Aim", icon = "🎯" })
 AimTab:Section({ name = "Aimbot" })
 
 AimTab:Toggle({
-    name     = "Aimbot",
-    default  = false,
-    callback = function(v) S.Enabled = v end,
+	name     = "Aimbot",
+	default  = false,
+	callback = function(v) S.Enabled = v end,
 })
 
 AimTab:Slider({
-    name     = "Smoothness",
-    min      = 1, max = 100, default = 8,
-    suffix   = "%",
-    callback = function(v) S.AimbotStrength = v / 100 end,
+	name     = "Smoothness",
+	min      = 1, max = 100, default = 8,
+	suffix   = "%",
+	callback = function(v) S.AimbotStrength = v / 100 end,
 })
 
 AimTab:Slider({
-    name     = "FOV",
-    min      = 1, max = 180, default = 20,
-    suffix   = "°",
-    callback = function(v) S.FOV = v end,
+	name     = "FOV",
+	min      = 1, max = 180, default = 20,
+	suffix   = "°",
+	callback = function(v) S.FOV = v end,
 })
 
 AimTab:Toggle({
-    name        = "Wall Check",
-    description = "Skip targets behind walls",
-    default     = true,
-    callback    = function(v) S.WallCheck = v end,
+	name        = "Wall Check",
+	description = "Skip targets behind walls",
+	default     = true,
+	callback    = function(v) S.WallCheck = v end,
 })
 
 AimTab:Toggle({
-    name     = "FOV Circle",
-    default  = false,
-    callback = function(v)
-        S.ShowFOVCircle = v
-        if not v and fovCircle then fovCircle.Visible = false end
-    end,
+	name     = "FOV Circle",
+	default  = false,
+	callback = function(v)
+		S.ShowFOVCircle = v
+		if not v and fovCircle then fovCircle.Visible = false end
+	end,
 })
 
 AimTab:Section({ name = "Triggerbot" })
 
 AimTab:Toggle({
-    name     = "Triggerbot",
-    default  = false,
-    callback = function(v) S.TrigEnabled = v end,
+	name     = "Triggerbot",
+	default  = false,
+	callback = function(v) S.TrigEnabled = v end,
 })
 
 AimTab:Slider({
-    name     = "Trigger FOV",
-    min      = 1, max = 15, default = 5,
-    suffix   = "°",
-    callback = function(v) S.TrigFOV = v end,
+	name     = "Trigger FOV",
+	min      = 1, max = 15, default = 5,
+	suffix   = "°",
+	callback = function(v) S.TrigFOV = v end,
+})
+
+AimTab:Section({ name = "Visuals"})
+
+AimTab:Toggle({
+	name = "ESP",
+	default = false,
+	callback = function(v)
+		ESP_ENABLED = v
+
+		if not v then
+			for _, esp in pairs(espObjects) do
+				if esp then esp:Destroy() end
+			end
+			espObjects = {}
+		end
+	end
 })
 
 if cfg.requireTool then
-    AimTab:Section({ name = "Tool Check" })
-    AimTab:Toggle({
-        name        = "Require Tool",
-        description = "Only aim when a gun is held",
-        default     = false,
-        callback    = function(v) S.RequireTool = v end,
-    })
+	AimTab:Section({ name = "Tool Check" })
+	AimTab:Toggle({
+		name        = "Require Tool",
+		description = "Only aim when a gun is held",
+		default     = false,
+		callback    = function(v) S.RequireTool = v end,
+	})
 end
 
 if cfg.prediction then
-    AimTab:Section({ name = "Prediction" })
-    AimTab:Toggle({
-        name     = "Prediction",
-        default  = true,
-        callback = function(v) S.UsePrediction = v end,
-    })
-    AimTab:Slider({
-        name     = "Extra Offset",
-        min      = 0, max = 15, default = 5,
-        suffix   = " st",
-        callback = function(v) S.PredOffset = v end,
-    })
+	AimTab:Section({ name = "Prediction" })
+	AimTab:Toggle({
+		name     = "Prediction",
+		default  = true,
+		callback = function(v) S.UsePrediction = v end,
+	})
+	AimTab:Slider({
+		name     = "Extra Offset",
+		min      = 0, max = 15, default = 5,
+		suffix   = " st",
+		callback = function(v) S.PredOffset = v end,
+	})
 end
 
 if cfg.animations then
-    AimTab:Section({ name = "Animations" })
-    AimTab:Toggle({
-        name        = "Tryhard Anims",
-        description = "Override default animations",
-        default     = false,
-        callback    = function(v)
-            S.AnimsEnabled = v
-            if v then
-                local char = player.Character
-                if char then startAnimLoop(char) end
-            else
-                stopAnimLoop()
-            end
-        end,
-    })
+	AimTab:Section({ name = "Animations" })
+	AimTab:Toggle({
+		name        = "Tryhard Anims",
+		description = "Override default animations",
+		default     = false,
+		callback    = function(v)
+			S.AnimsEnabled = v
+			if v then
+				local char = player.Character
+				if char then startAnimLoop(char) end
+			else
+				stopAnimLoop()
+			end
+		end,
+	})
 end
 
 -- ════════════════════════════════════════════
@@ -570,134 +652,134 @@ end
 -- ════════════════════════════════════════════
 
 if cfg.hasFarm then
-    local FarmTab = GUI:CreateTab({ name = "Farm", icon = "🔄" })
+	local FarmTab = GUI:CreateTab({ name = "Farm", icon = "🔄" })
 
-    -- ── Loop TP section ───────────────────────────────────
+	-- ── Loop TP section ───────────────────────────────────
 
-    FarmTab:Section({ name = "Loop TP" })
+	FarmTab:Section({ name = "Loop TP" })
 
-    local loopCountLabel = FarmTab:Label({
-        text = "Loops: 0"
-    })
+	local loopCountLabel = FarmTab:Label({
+		text = "Loops: 0"
+	})
 
-    local currentPtsLabel = FarmTab:Label({
-        text = "Points: loading..."
-    })
+	local currentPtsLabel = FarmTab:Label({
+		text = "Points: loading..."
+	})
 
-    -- Update current points label live
-    task.spawn(function()
-        while true do
-            local pts = getCurrentPoints()
-            if currentPtsLabel then
-                pcall(function()
-                    currentPtsLabel:Set("Points: " .. tostring(pts))
-                end)
-            end
-            task.wait(2)
-        end
-    end)
+	-- Update current points label live
+	task.spawn(function()
+		while true do
+			local pts = getCurrentPoints()
+			if currentPtsLabel then
+				pcall(function()
+					currentPtsLabel:Set("Points: " .. tostring(pts))
+				end)
+			end
+			task.wait(2)
+		end
+	end)
 
-    -- We need a toggle for the farm loop
-    local farmToggle = FarmTab:Toggle({
-        name        = "Loop TP",
-        description = string.format("TPs to %.0f, %.0f, %.0f every %ds",
-            cfg.farmTarget.X, cfg.farmTarget.Y, cfg.farmTarget.Z, cfg.farmDelay),
-        default     = false,
-        callback    = function(v)
-            farmActive = v
+	-- We need a toggle for the farm loop
+	local farmToggle = FarmTab:Toggle({
+		name        = "Loop TP",
+		description = string.format("TPs to %.0f, %.0f, %.0f every %ds",
+			cfg.farmTarget.X, cfg.farmTarget.Y, cfg.farmTarget.Z, cfg.farmDelay),
+		default     = false,
+		callback    = function(v)
+			farmActive = v
 
-            if v then
-                farmThread = task.spawn(function()
-                    while farmActive do
-                        local char = player.Character
-                        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-                        if hrp then
-                            hrp.CFrame = CFrame.new(cfg.farmTarget)
-                        end
-                        task.wait(cfg.farmDelay)
-                        farmLoops = farmLoops + 1
-                        -- Update loop count label
-                        pcall(function()
-                            loopCountLabel:Set("Loops: " .. tostring(farmLoops))
-                        end)
-                    end
-                end)
-            else
-                if farmThread then
-                    task.cancel(farmThread)
-                    farmThread = nil
-                end
-            end
-        end,
-    })
+			if v then
+				farmThread = task.spawn(function()
+					while farmActive do
+						local char = player.Character
+						local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+						if hrp then
+							hrp.CFrame = CFrame.new(cfg.farmTarget)
+						end
+						task.wait(cfg.farmDelay)
+						farmLoops = farmLoops + 1
+						-- Update loop count label
+						pcall(function()
+							loopCountLabel:Set("Loops: " .. tostring(farmLoops))
+						end)
+					end
+				end)
+			else
+				if farmThread then
+					task.cancel(farmThread)
+					farmThread = nil
+				end
+			end
+		end,
+	})
 
-    -- ── Point Calculator section ───────────────────────────
+	-- ── Point Calculator section ───────────────────────────
 
-    FarmTab:Section({ name = "Point Calculator  (~" .. tostring(cfg.pointsPerLoop/1000) .. "k / loop)" })
+	FarmTab:Section({ name = "Point Calculator  (~" .. tostring(cfg.pointsPerLoop/1000) .. "k / loop)" })
 
-    local calcTarget   = 0
-    local loopsNeededL = FarmTab:Label({ text = "Loops needed:  —" })
-    local estTimeL     = FarmTab:Label({ text = "Est. time:  —" })
-    local progressL    = FarmTab:Label({ text = "Progress:  —" })
+	local calcTarget   = 0
+	local loopsNeededL = FarmTab:Label({ text = "Loops needed:  —" })
+	local estTimeL     = FarmTab:Label({ text = "Est. time:  —" })
+	local progressL    = FarmTab:Label({ text = "Progress:  —" })
 
-    local function recalculate()
-        if calcTarget <= 0 then
-            pcall(function() loopsNeededL:Set("Loops needed:  —") end)
-            pcall(function() estTimeL:Set("Est. time:  —") end)
-            pcall(function() progressL:Set("Progress:  —") end)
-            return
-        end
+	local function recalculate()
+		if calcTarget <= 0 then
+			pcall(function() loopsNeededL:Set("Loops needed:  —") end)
+			pcall(function() estTimeL:Set("Est. time:  —") end)
+			pcall(function() progressL:Set("Progress:  —") end)
+			return
+		end
 
-        local currentPts  = getCurrentPoints()
-        local stillNeeded = math.max(0, calcTarget - currentPts)
-        local needed      = math.ceil(stillNeeded / cfg.pointsPerLoop)
-        local totalSec    = needed * cfg.farmDelay
+		local currentPts  = getCurrentPoints()
+		local stillNeeded = math.max(0, calcTarget - currentPts)
+		local needed      = math.ceil(stillNeeded / cfg.pointsPerLoop)
+		local totalSec    = needed * cfg.farmDelay
 
-        pcall(function()
-            loopsNeededL:Set(string.format(
-                "Loops needed:  %d  (%d pts left)", needed, stillNeeded))
-        end)
+		pcall(function()
+			loopsNeededL:Set(string.format(
+				"Loops needed:  %d  (%d pts left)", needed, stillNeeded))
+		end)
 
-        if needed == 0 then
-            pcall(function() estTimeL:Set("Est. time:  done! ✓") end)
-            pcall(function() progressL:Set("Progress:  ✓ Target reached!") end)
-        else
-            local loopsTotal = math.ceil(calcTarget / cfg.pointsPerLoop)
-            local loopsDone  = math.max(0, loopsTotal - needed)
-            local pct        = math.min(100, math.floor((loopsDone / loopsTotal) * 100))
-            pcall(function()
-                estTimeL:Set("Est. time:  " .. formatTime(totalSec))
-            end)
-            pcall(function()
-                progressL:Set(string.format(
-                    "Progress:  %d/%d  (%d%%)  ~%s left",
-                    loopsDone, loopsTotal, pct, formatTime(totalSec)))
-            end)
-        end
-    end
+		if needed == 0 then
+			pcall(function() estTimeL:Set("Est. time:  done! ✓") end)
+			pcall(function() progressL:Set("Progress:  ✓ Target reached!") end)
+		else
+			local loopsTotal = math.ceil(calcTarget / cfg.pointsPerLoop)
+			local loopsDone  = math.max(0, loopsTotal - needed)
+			local pct        = math.min(100, math.floor((loopsDone / loopsTotal) * 100))
+			pcall(function()
+				estTimeL:Set("Est. time:  " .. formatTime(totalSec))
+			end)
+			pcall(function()
+				progressL:Set(string.format(
+					"Progress:  %d/%d  (%d%%)  ~%s left",
+					loopsDone, loopsTotal, pct, formatTime(totalSec)))
+			end)
+		end
+	end
 
-  
-FarmTab:Slider({
-    name     = "Target Points (x25k)",
-    min      = 1, max = 4000, default = 20,
-    suffix   = "  =  " .. "500k",
-    callback = function(v)
-        calcTarget = v * 25000
-        -- update suffix to show real value
-        local display = v * 25000
-        local pretty = display >= 1000000
-            and string.format("%.1fm", display/1000000)
-            or  string.format("%dk",   display/1000)
-        recalculate()
-    end,
-})
 
-    task.spawn(function()
-        while true do
-            task.wait(cfg.farmDelay)
-            if calcTarget > 0 then recalculate() end
-        end
-    end)
+	FarmTab:Slider({
+		name     = "Target Points (x25k)",
+		min      = 1, max = 4000, default = 20,
+		suffix   = "  =  " .. "500k",
+		callback = function(v)
+			calcTarget = v * 25000
+			-- update suffix to show real value
+			local display = v * 25000
+			local pretty = display >= 1000000
+				and string.format("%.1fm", display/1000000)
+				or  string.format("%dk",   display/1000)
+			recalculate()
+		end,
+	})
+
+	task.spawn(function()
+		while true do
+			task.wait(cfg.farmDelay)
+			if calcTarget > 0 then recalculate() end
+		end
+	end)
 end
 
 -- ════════════════════════════════════════════
@@ -737,10 +819,10 @@ InfoTab:Label({ text = "Toggle Aim   :  Q" })
 local LogTab = GUI:CreateTab({ name = "Changelog", icon = "📝" })
 
 for _, entry in ipairs(CHANGELOG) do
-    LogTab:Section({ name = "v" .. entry.ver })
-    for _, line in ipairs(entry.lines) do
-        LogTab:Label({ text = line })
-    end
+	LogTab:Section({ name = "v" .. entry.ver })
+	for _, line in ipairs(entry.lines) do
+		LogTab:Label({ text = line })
+	end
 end
 
 -- ─────────────────────────────────────────────────────────
@@ -748,10 +830,10 @@ end
 -- ─────────────────────────────────────────────────────────
 
 UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.Q then
-        S.Enabled = not S.Enabled
-    end
+	if gpe then return end
+	if input.KeyCode == Enum.KeyCode.Q then
+		S.Enabled = not S.Enabled
+	end
 end)
 
 -- ─────────────────────────────────────────────────────────
@@ -759,10 +841,10 @@ end)
 -- ─────────────────────────────────────────────────────────
 
 task.delay(1.5, function()
-    local msg = isUniversal
-        and "Universal mode · targeting players"
-        or  "Loaded · " .. cfg.name
-    GUI.notify("Silver Hub", msg, 4)
+	local msg = isUniversal
+		and "Universal mode · targeting players"
+		or  "Loaded · " .. cfg.name
+	GUI.notify("Silver Hub", msg, 4)
 end)
 
 -- ─────────────────────────────────────────────────────────
@@ -770,21 +852,42 @@ end)
 -- ─────────────────────────────────────────────────────────
 
 RunService.RenderStepped:Connect(function(dt)
-    currentTarget = getBestTarget()
-    updateFOVCircle()
+	if lockedTarget then
+		local hum = lockedTarget:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then
+			lockedTarget = nil
+		end
+	end
 
-    if S.Enabled and (not S.RequireTool or isToolEquipped()) then
-        local target = currentTarget
-        if target then
-            local pos = getAimPosition(target)
-            if pos then
-                local cf    = camera.CFrame
-                local goal  = CFrame.lookAt(cf.Position, pos)
-                local alpha = 1 - (1 - math.clamp(S.AimbotStrength, 0, 1)) ^ (dt * 60)
-                camera.CFrame = cf:Lerp(goal, alpha)
-            end
-        end
-    end
+	if not lockedTarget then
+		lockedTarget = getBestTarget()
+	end
 
-    if currentTarget then tryTriggerbot(currentTarget) end
+	currentTarget = lockedTarget
+	updateFOVCircle()
+	
+	if ESP_ENABLED then
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p == player then continue end
+			local char = p.Character
+			if char and not espObjects[p] then
+				espObjects[p] = createESP(char)
+			end
+		end
+	end
+
+	if S.Enabled and (not S.RequireTool or isToolEquipped()) then
+		local target = currentTarget
+		if target then
+			local pos = getAimPosition(target)
+			if pos then
+				local cf    = camera.CFrame
+				local goal  = CFrame.lookAt(cf.Position, pos)
+				local alpha = 1 - (1 - math.clamp(S.AimbotStrength, 0, 1)) ^ (dt * 60)
+				camera.CFrame = cf:Lerp(goal, alpha)
+			end
+		end
+	end
+
+	if currentTarget then tryTriggerbot(currentTarget) end
 end)
