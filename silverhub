@@ -12,7 +12,7 @@ local Library = loadstring(game:HttpGet(
 --  VERSION / CHANGELOG
 -- ─────────────────────────────────────────────────────────
 
-local VERSION = "2.4"
+local VERSION = "2.4.2"
 
 local CHANGELOG = {
 	{ ver = "2.4", lines = {
@@ -412,27 +412,26 @@ local function getAimPosition(target)
 	local part = getAimPart(target)
 	if not part then return nil end
 
-	local basePos = part.Position
+	local pos = part.Position
 
-	if not cfg.prediction or not S.UsePrediction then
-		return basePos
+	if not cfg.prediction then
+		return pos
 	end
 
 	local vel = part.AssemblyLinearVelocity
 
-	-- MM2
+
 	if cfg.mm2 then
-		local ping = getPing()
-		return basePos + (vel * ping * 1.1)
+		-- valeur fixe stable (pas ping-based ici)
+		return pos + (vel * 0.06)
 	end
 
-	-- UNIVERSAL
-	local dist = (basePos - camera.CFrame.Position).Magnitude
+	
+	local ping = getPing()
+	local dist = (pos - camera.CFrame.Position).Magnitude
 	local travelTime = dist / math.max(S.BulletSpeed, 1)
 
-	local ping = getPing()
-
-	return basePos + (vel * travelTime) + (vel * ping * S.PingMultiplier)
+	return pos + (vel * travelTime) + (vel * ping * S.PingMultiplier)
 end
 -- ─────────────────────────────────────────────────────────
 --  TRIGGERBOT
@@ -867,11 +866,16 @@ RunService.RenderStepped:Connect(function(dt)
 	updateFOVCircle()
 	
 	if ESP_ENABLED then
-		while true do
-			for _, p in ipairs(Players:GetPlayers()) do
-				if p == player then continue end
-				local char = p.Character
-				if char and not espObjects[p] then
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p == player then continue end
+
+			local char = p.Character
+
+			if char then
+				if not espObjects[p] or not espObjects[p].Parent then
+					if espObjects[p] then
+						espObjects[p]:Destroy()
+					end
 					espObjects[p] = createESP(char)
 				end
 			end
@@ -890,6 +894,15 @@ RunService.RenderStepped:Connect(function(dt)
 			end
 		end
 	end
-
+	
+	Players.PlayerAdded:Connect(function(p)
+		p.CharacterAdded:Connect(function(char)
+			if ESP_ENABLED then
+				task.wait(0.2)
+				espObjects[p] = createESP(char)
+			end
+		end)
+	end)
+	
 	if currentTarget then tryTriggerbot(currentTarget) end
 end)
