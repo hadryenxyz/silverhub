@@ -1,6 +1,7 @@
 --[[
   SILVER HUB  ·  v2.4.3  ·  VenturaUI Edition
   @hadryenxyz
+ LocalScript for the game "Hacker's Life", simulates aim assitance experience against bots
 --]]
 
 local Library = loadstring(game:HttpGet(
@@ -294,8 +295,6 @@ end
 -- ─────────────────────────────────────────────────────────
 --  FIX 1 — PREDICTION
 --  Always runs (ping-based), no manual toggle needed.
---  MM2 uses a fixed small offset (no bullet travel, instant raycast).
---  Universal/other uses: dist/bulletSpeed + ping compensation.
 -- ─────────────────────────────────────────────────────────
 
 local function getAimPosition(target)
@@ -318,59 +317,6 @@ local function getAimPosition(target)
         local ping       = getPing()
         return pos + vel * (travelTime + ping * S.PingMultiplier)
     end
-end
-
--- ─────────────────────────────────────────────────────────
---  MM2 SILENT AIM HOOK  (FireWeapon RemoteEvent)
--- ─────────────────────────────────────────────────────────
-
-local mm2Hooked = false
-
-local function hookMM2Remote(remote)
-    if mm2Hooked then return end
-    mm2Hooked = true
-    local mt    = getrawmetatable(game)
-    local oldNC = mt.__namecall
-    setreadonly(mt, false)
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        if method == "FireServer" and self == remote and S.Enabled then
-            local target = currentTarget
-            if target then
-                local part = getAimPart(target)
-                if part then
-                    local pos = getAimPosition(target) or part.Position
-                    return oldNC(self, pos)
-                end
-            end
-        end
-        return oldNC(self, ...)
-    end)
-    setreadonly(mt, true)
-end
-
-if cfg.mm2 then
-    local function scanForFireWeapon(char)
-        for _, tool in ipairs(char:GetChildren()) do
-            if not tool:IsA("Tool") then continue end
-            local remote = tool:FindFirstChild("FireWeapon")
-            if remote then hookMM2Remote(remote) end
-        end
-    end
-
-    local char = player.Character
-    if char then scanForFireWeapon(char) end
-
-    player.CharacterAdded:Connect(function(c)
-        mm2Hooked = false
-        c.ChildAdded:Connect(function(child)
-            if child:IsA("Tool") then
-                task.wait(0.1)
-                local remote = child:FindFirstChild("FireWeapon")
-                if remote then hookMM2Remote(remote) end
-            end
-        end)
-    end)
 end
 
 -- ─────────────────────────────────────────────────────────
