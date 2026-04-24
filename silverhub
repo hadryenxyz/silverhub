@@ -64,6 +64,7 @@ local REGISTRY = {
     [142823291]       = { name="Murder Mystery 2",         accent=Color3.fromRGB(255,80,80),   animations=false, requireTool=true,  targetType="players",              hasFarm=false, mm2=true  },
     [8665470667]      = { name="5v5 MM2 MilBase",          accent=Color3.fromRGB(255,120,120), animations=false, requireTool=true,  targetType="players",              hasFarm=false, mm2=true  },
     [125724255179297] = { name="MMV",                      accent=Color3.fromRGB(255,100,100), animations=false, requireTool=true,  targetType="players",              hasFarm=false, mm2=true  },
+    [135193469413243] = { name="MM2 Aim Trainer 2",        accent=Color3.fromRGB(18,94,109),   animations=false, requireTool=true,  targetType="mm2bot",              hasFarm=false, mm2=true  },
 }
 
 local cfg = REGISTRY[PlaceId] or {
@@ -86,7 +87,6 @@ _G.SVLR_Settings = {
     ShowFOVCircle  = false,
     RequireTool    = false,
     WallCheck      = true,
-    -- Prediction is now always on and ping-based — no manual toggle/offset
     BulletSpeed    = 220,
     PingMultiplier = 1.0,
     TrigEnabled    = false,
@@ -219,6 +219,13 @@ local function getTargetList()
             end
         end
 
+    elseif tt == "mm2bots" then
+        local tf = workspace:FindFirstChild("Rigs")
+        if not tf then return list end
+        for _, obj in ipairs(tf:GetChildren()) do
+            if obj:IsA("Model") then table.insert(list, obj) end
+        end
+    
     elseif tt == "workspaceTargetsParts" then
         local tf = workspace:FindFirstChild("Targets")
         if not tf then return list end
